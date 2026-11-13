@@ -1,0 +1,1245 @@
+# CTF 解题赛 3D 攻防态势沙盘 — 中央三维场景详细设计
+
+> 设计目标：把「算力中心机房拓扑」和「CTF 实时攻防战场」融合进同一个三维空间。选手在拓扑外部发起攻击，题目以设备为载体嵌在分区里，所有交互沿着真实网络路径传播，整个场景需要一眼看懂「谁在打哪个分区、打到什么程度、有没有打进去」。
+
+---
+
+## 一、设计总述
+
+### 1.1 三层叙事结构
+
+| 层级 | 空间 | 视觉主体 | 承担的信息 |
+|---|---|---|---|
+| **外环层** | 半径 20 的前方 | 攻击区（选手指挥舱） | 参赛队伍、当前攻击源、火力值 |
+| **中环层** | 半径 13 的七等分环 | 7 个题目分区平台 | 题目方向、分区得分、已解数量、威胁度 |
+| **内核层** | 半径 8.6 环 + 原点 | 环形数据总线 + 全局枢纽 | 数据流向、全局脉冲、路径动画 |
+
+### 1.2 核心视觉原则
+
+- **暗场 + 自发光**：除地面外几乎不依赖物理光照，靠 `emissive` + `UnrealBloomPass` 塑造科技感，避免大面积灰面。
+- **状态即颜色**：青(未解) / 橙(攻击中) / 绿(已解) / 红(失败) 四色贯穿所有元素，模型、铭牌、连线、粒子统一遵循。
+- **动效分层**：静态底噪（呼吸、流光）永远存在 → 交互态（脉冲、扫描）临时叠加 → 事件态（爆闪、冲击波）瞬时爆发，三层叠加不打架。
+- **拓扑可读**：任何一条攻击都能在地面上看到完整路径（选手 → 总线 → 分区 → 设备），而不是一条凭空出现的光线。
+
+---
+
+## 二、空间布局与坐标规划
+
+### 2.1 俯视布局
+
+```
+                          Z-
+                           │
+              [AI知识库]    │    [智能体编排]
+                 (0,-13)    │      (9.96,-8.36)
+                    ╲       │       ╱
+        [算力调度]───╲──────┼──────╱───[模型推理]
+        (-9.96,-8.36)╲     │     ╱      (12.8,2.26)
+                       ╲    │    ╱
+                        ╲   │   ╱
+               [运维保障]─╲──●──╱─[AI应用接入]
+               (-12.8,2.26)  │     (6.5,11.26)
+                              │
+                    [通信网络]│
+                  (-6.5,11.26)
+                              │
+                    ┌─────────┴─────────┐
+                    │   ★ 攻击区（选手席） │
+                    │      (0, 0, 20)     │
+                    └───────────────────┘
+                              │
+                             Z+  ← 相机默认朝向
+```
+
+### 2.2 分区坐标表
+
+角度 θ 从 **+Z 轴** 起算、向 **+X 方向** 为正；位置 = `(R·sinθ, 0, R·cosθ)`，分区环半径 `R = 13`。
+
+| 分区 ID | 名称 | θ | 世界坐标 (x, y, z) | 主题色 | 设备原型 |
+|---|---|---|---|---|---|
+| `ai-access` | AI 应用接入 | 30° | (6.50, 0, 11.26) | `#00d4ff` | console + core |
+| `inference` | 模型推理服务 | 80° | (12.80, 0, 2.26) | `#a855f7` | core |
+| `agent` | 智能体编排调用 | 130° | (9.96, 0, -8.36) | `#f472b6` | console |
+| `knowledge` | AI 知识库与数据存储 | 180° | (0, 0, -13) | `#14e0c8` | rack |
+| `compute` | 算力调度 | 230° | (-9.96, 0, -8.36) | `#ffb020` | blade |
+| `ops` | 运维保障 | 280° | (-12.80, 0, 2.26) | `#00ff88` | rack + tower |
+| `net` | 通信网络 | 330° | (-6.50, 0, 11.26) | `#2f8bff` | tower |
+| `attack` | **攻击区（选手席）** | 0° | (0, 0.9, 20) | `#ff3b5c` → `#ff6b35` | 光点集群 |
+
+> **说明**：攻击区放在 Z 正前方、略微下沉/悬浮，作为视觉上的“最近景”；分区环留出 0° 缺口，避免遮挡。相机默认从 `(0, 26, 38)` 看向 `(0, 0, 2)`，俯角约 38°，所有分区平台均可见。
+
+### 2.3 纵向高度规划
+
+| 元素 | Y 高度 | 说明 |
+|---|---|---|
+| 地面网格盘 | -0.6 | 半径 26 的圆盘，径向渐变淡出 |
+| 分区平台顶面 | 0.0 | 六棱柱高 0.36，底面 -0.36 |
+| 环形总线 | 0.28 | 悬浮于中心、略高于平台 |
+| 设备机体 | 0.0 ~ 2.0 | 原型不同高度不同 |
+| 设备全息铭牌 | 2.6 ~ 3.6 | 交错高度，避免重叠 |
+| 分区全息遥测牌 | 6.8 | 面向相机，尺寸 4.2 × 2.0 |
+| 攻击区平台 | 0.9 | 悬浮于地面上方，带向下光锥 |
+| 攻击光束最高点 | 最高 +6 | 沿贝塞尔曲线拱起 |
+
+---
+
+## 三、场景层级结构（Scene Graph）
+
+```
+scene
+├── worldGroup                        // 全局（预留整体旋转/缩放入口）
+│   ├── groundGroup                   // 地面与氛围
+│   │   ├── groundDisc                // 六边形网格 Shader 圆盘
+│   │   ├── groundRipples             // 事件时从命中点扩散的地面涟漪
+│   │   └── starField                 // 远景星点
+│   │
+│   ├── coreGroup                     // 内核：总线枢纽
+│   │   ├── hubCore                   // 旋转多环 + 发光核心
+│   │   ├── busRing                   // 环形数据总线（流光滑着）
+│   │   └── busNodes × 8              // 环上接入端口（八面体宝石）
+│   │
+│   ├── zoneGroup[7]                  // 分区（每区一个 Group）
+│   │   ├── platform                  // 六棱柱基座 + 顶面 Shader
+│   │   ├── edgeNeon                  // 边缘霓虹描边
+│   │   ├── underBeam                 // 向下悬浮光锥
+│   │   ├── zoneTelemetry             // 分区全息遥测牌（Sprite）
+│   │   ├── accessPipe                // 接入总线管道
+│   │   ├── deviceGroup[5]            // 题目/设备节点
+│   │   │   ├── baseRing              // 底座光环
+│   │   │   ├── body                  // 原型机体
+│   │   │   ├── edgeLine              // 锐利线框
+│   │   │   ├── auraShell             // 柔光外壳（BackSide）
+│   │   │   ├── alertBeacon           // 顶部警示光柱
+│   │   │   ├── scanRing              // 攻防扫描环（动态挂载）
+│   │   │   ├── holoLabel             // 题目全息铭牌（Sprite）
+│   │   │   └── fxAnchor              // 特效锚点（Object3D 空节点）
+│   │   └── shieldDome                // 分区防护罩（受击时显隐）
+│   │
+│   ├── attackGroup                   // 攻击区
+│   │   ├── platform                  // 指挥舱平台
+│   │   ├── orbitalRing × 3           // 选手光点轨道
+│   │   ├── playerOrbs[30]            // 每位/每队一个光点
+│   │   ├── muzzlePoint               // 发射口锚点（光束起点）
+│   │   └── attackTelemetry           // 攻击区全息牌
+│   │
+│   └── fxGroup                       // 所有一次性特效池
+│       ├── beams[]                   // 攻击光束
+│       ├── probes[]                  // 攻击探针头部
+│       ├── particleBursts[]          // 粒子爆发池
+│       ├── shockwaves[]              // 冲击波环池
+│       └── floatTexts[]              // 上浮文字（ACCESS DENIED / SOLVED）
+│
+├── lights
+│   ├── ambientLight (0x223344, 0.7)
+│   ├── directionalLight (0x88ccff, 0.6, 从上方 45°)
+│   └── zonePointLight × 7 (各自主题色，intensity 0.8, distance 22)
+│
+└── camera + orbitControls
+```
+
+---
+
+## 四、中心：全局数据总线枢纽
+
+### 4.1 造型
+
+```
+        ╭──── Torus (R=2.4, r=0.06) 绕 Y 轴旋转
+       ╱  ╲
+      │  ◈  │  IcosahedronGeometry(0.9, 1) 自发光核心
+       ╲  ╱   外包一层 IcosahedronGeometry(1.25, 1) 半透明外壳
+        ╰──── Torus (R=3.2, r=0.04) 倾斜 60°，反向旋转
+```
+
+- **核心**：`IcosahedronGeometry(0.9, 1)`，`MeshBasicMaterial` + `#00d4ff`，内部再叠一个 `0.55` 的小球做高亮核。
+- **双环**：两个 `TorusGeometry` 分别绕 X / Z 轴旋转，速度 0.3 / -0.45 rad/s。
+- **底座**：`CylinderGeometry(0.3, 1.6, 0.6, 6)` 倒锥台，自发光边缘。
+- **呼吸**：整体 scale 随 `sin(t*1.2)` 在 `1.0 ~ 1.04` 之间波动。
+
+### 4.2 环形总线 Bus Ring
+
+- `TorusGeometry(8.6, 0.16, 8, 128)`，位于 y=0.28，`MeshBasicMaterial` + 自定义 Shader。
+- 外圈再套一层 `TorusGeometry(8.6, 0.34)`，透明度 0.06，做体积光晕。
+- **流光 Shader**（沿环周向流动的能量脉冲）：
+
+```glsl
+// vertex: 传递 uv（Torus 的 uv.x 即周向 0~1）
+varying vec2 vUv;
+void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+
+// fragment
+uniform float uTime; uniform vec3 uColor; uniform float uSpeed;
+varying vec2 vUv;
+void main(){
+  float a = fract(vUv.x * 10.0 - uTime * uSpeed);
+  float glow = pow(1.0 - abs(a * 2.0 - 1.0), 5.0);
+  vec3 col = uColor * (0.35 + glow * 2.6);
+  gl_FragColor = vec4(col, 0.20 + glow * 0.80);
+}
+```
+
+- **接入端口**：在环上 8 个等分点（对应 7 个分区角度 + 攻击区 0°）放置 `OctahedronGeometry(0.28)` 宝石，缓慢自转，`#00d4ff` 自发光。
+
+---
+
+## 五、分区平台设计
+
+### 5.1 统一结构（7 区共用基类）
+
+| 部件 | 几何 / 参数 | 材质 |
+|---|---|---|
+| **基座** | `CylinderGeometry(4.6, 4.6, 0.36, 6)`，rotateY 对齐 | `MeshStandardMaterial`，color `#0d1420`，metalness 0.8，roughness 0.35 |
+| **顶面** | 复用基座顶盖，覆一层 Shader 平面（略抬高 0.01 避免 z-fighting） | 自定义 Shader：六边形网格 + 中心向外扩散的扫描波 + 主题色描边 |
+| **边缘霓虹** | `EdgesGeometry` + `LineSegments`，或沿六边形边长生成 6 条 `TubeGeometry(0.05)` | `MeshBasicMaterial` 主题色，叠加混合 |
+| **向下光锥** | `CylinderGeometry(4.6, 0.8, 3.2, 6, 1, true)`，位于平台下方 | 主题色，`transparent`，opacity 0.06，`side: BackSide`，加法混合 |
+| **悬浮** | 每区 `platform.position.y = sin(t * 0.6 + phase) * 0.08` | 相位错开，避免同频 |
+
+### 5.2 顶面 Shader（核心视觉）
+
+```glsl
+// 六边形网格 + 径向扫描波
+uniform float uTime;
+uniform vec3  uColor;
+uniform vec3  uCenterColor;
+varying vec2  vPos;   // 局部 XZ 坐标
+
+float hexGrid(vec2 p){
+  p = abs(p);
+  return max(p.x * 0.866 + p.y * 0.5, p.y);
+}
+
+void main(){
+  float d = length(vPos);
+  // 1) 六边形网格线
+  vec2 g = fract(vPos * 1.6) - 0.5;
+  float hex = hexGrid(g);
+  float gridLine = smoothstep(0.44, 0.48, hex) * smoothstep(0.52, 0.48, hex);
+
+  // 2) 径向扫描波（每 3 秒一圈）
+  float scan = fract(uTime * 0.33 - d * 0.18);
+  float wave = smoothstep(0.92, 1.0, scan) * (1.0 - smoothstep(1.0, 1.0, scan));
+
+  // 3) 中心辉光
+  float core = smoothstep(3.2, 0.0, d);
+
+  vec3 col = uColor * (gridLine * 0.35 + wave * 1.8 + core * 0.5);
+  float a  = gridLine * 0.22 + wave * 0.55 + core * 0.30;
+  gl_FragColor = vec4(col, a);
+}
+```
+
+### 5.3 分区全息遥测牌（Sprite）
+
+- 位置 `(0, 6.8, 0)`（相对分区原点），尺寸 `4.2 × 2.0`。
+- Canvas 尺寸 `1024 × 512`，每 1.5s 重绘（仅在有数值变化时重绘，避免浪费）。
+- 版式：
+
+```
+┌──────────────────────────────────────┐
+│  ◤ AI 应用接入                       │  ← 主题色，18px 粗体
+│  ────────────────────────────────    │  ← 主题色渐变分隔线
+│  SCORE   12,480  /  20,000           │  ← 得分，青绿高亮
+│  SOLVED  3 / 5     THREAT  2         │  ← 已解 / 威胁
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░  62%           │  ← 进度条
+└──────────────────────────────────────┘
+```
+
+- 底色：`rgba(10,14,23,0.72)`，描边主题色 1.5px，四角切角 8px（赛博朋克风）。
+- 受击时整体做一次 `scale 1 → 1.08 → 1` 弹跳 + 描边闪烁。
+
+### 5.4 分区主题差异化（避免 7 个区长得一样）
+
+| 分区 | 平台造型微调 | 顶部装饰 | 特殊氛围 |
+|---|---|---|---|
+| AI 应用接入 | 标准六棱柱 | 平台中央一根旋转的「数据光柱」 | 大量从外部飘入的青色粒子（模拟请求流入） |
+| 模型推理服务 | 平台抬高 0.4，下方加 4 根小支柱 | 顶部悬浮一个缓慢自转的神经网络点云（60 个点，用 `Points` + 邻近连线 `LineSegments`） | 紫色雾感 |
+| 智能体编排调用 | 平台边缘有一圈「流程节点」小光点绕行（8 个） | 平台中央一根向下的「指令流」光柱 | 品红脉冲 |
+| AI 知识库 | 平台更厚，像“硬盘塔” | 平台下方有一圈缓慢旋转的数据环（Torus × 2） | 青绿，带数据流水纹 |
+| 算力调度 | 平台顶面有放射状散热槽纹理 | 顶部 3 个悬浮立方体（代表算力配额）缓慢浮动 | 琥珀色，热感 |
+| 运维保障 | 平台边缘加一圈护栏式细线 | 一根小型雷达天线（锥体 + 旋转横杆） | 绿色，雷达扫描锥 |
+| 通信网络 | 平台边缘有 6 根信号柱 | 顶部一圈脉冲信号波（3 层扩散圆环） | 蓝色，纵向流动光带 |
+
+---
+
+## 六、题目 / 设备模型设计（核心）
+
+### 6.1 五种设备原型
+
+每道题 = 一台设备，设备原型按分区属性分配。
+
+#### 原型 A：机柜 Rack —— 用于知识库、运维
+
+```
+   ┌──────────┐  ← 顶盖微发光条
+   │ ▪▪▪▪▪▪▪▪ │  ← 正面：Canvas 贴图（12 层服务器托架 + 随机闪烁指示灯）
+   │ ▪▪▪▪▪▪▪▪ │
+   │ ▪▪▪▪▪▪▪▪ │
+   └──────────┘
+```
+- 尺寸 `1.1 × 1.9 × 0.9`，`BoxGeometry`。
+- **正面贴图**（Canvas 512×512）：
+  - 深色底 `#0b1220`，12 条横向分隔线。
+  - 每层左侧 2 个指示灯，颜色随机（青/绿/橙），有 3% 概率在每帧切换，制造“运行中”的感觉。
+- 顶部一条 `BoxGeometry(1.1, 0.06, 0.9)` 自发光条。
+
+#### 原型 B：算力刀片 GPU Blade —— 用于算力调度
+
+```
+  ▬▬▬▬▬▬▬▬▬▬▬▬▬  ← 顶部发光散热条纹（InstancedMesh × 14）
+  ██████████████
+  ▬▬▬▬▬▬▬▬▬▬▬▬▬
+```
+- 主体 `BoxGeometry(1.7, 0.55, 1.1)`，扁平宽体。
+- 顶部散热鳍片：14 片 `BoxGeometry(1.6, 0.08, 0.03)`，用 `InstancedMesh` 一个 draw call 搞定。
+- 侧面 3 个矩形发光窗口（代表 GPU 负载），亮度随负载值动。
+
+#### 原型 C：核心球 Core Sphere —— 用于推理服务、AI 应用
+
+```
+        ╭───╮
+      ╱   ◈   ╲      ← 外层 Icosahedron(0.62, 1) 半透明壳
+     │    ●    │     ← 内层球体发光核（随时间脉动）
+      ╲   ◈   ╱      ← 两个倾角不同的 Torus 环绕旋转
+        ╰───╯
+```
+- 内核 `IcosahedronGeometry(0.42, 1)`，`MeshBasicMaterial` 主题色，scale 呼吸 1.0~1.12。
+- 外壳 `IcosahedronGeometry(0.62, 1)`，`MeshBasicMaterial` 加法混合，opacity 0.22，`side: BackSide`。
+- 双环：`TorusGeometry(0.78, 0.025, 6, 48)`，倾斜 30° / -55°，反向旋转。
+
+#### 原型 D：通信塔 Tower —— 用于通信网络
+
+```
+        ╱╲        ← 锥顶
+       │▓▓│
+       │▓▓│       ← 圆柱塔身 + 3 圈发光环
+       │▓▓│
+      ╱    ╲      ← 底部三脚支架
+```
+- 塔身 `CylinderGeometry(0.22, 0.38, 1.8, 12)`。
+- 3 圈 `TorusGeometry(0.4, 0.03)` 沿高度分布，每帧 `scale` 波动形成“信号扩散”。
+- 顶部锥体 `ConeGeometry(0.3, 0.5, 12)` 自发光。
+
+#### 原型 E：控制台 Console —— 用于智能体、AI 应用
+
+```
+     ╱────────╲    ← 倾斜 15° 的发光屏幕面
+    ╱  ▓▓▓▓▓▓  ╲
+   │            │
+   └────────────┘
+```
+- 主体 `BoxGeometry(1.3, 0.9, 0.9)`，顶面切斜（用 `ExtrudeGeometry` 或两个 Box 拼接）。
+- 屏幕面：`PlaneGeometry(1.1, 0.55)` 倾斜 15°，材质为 Canvas 贴图，绘制滚动代码行 / 波形图（每帧只滚动 uv，不重绘）。
+
+### 6.2 每台设备的通用包装层（所有原型共享）
+
+```js
+function createChallengeNode(challenge) {
+  const group = new THREE.Group();
+
+  // ① 底座光环
+  const ringGeo = new THREE.RingGeometry(0.85, 1.02, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: STATE_COLOR.idle, transparent: true, opacity: 0.7,
+    side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  const baseRing = new THREE.Mesh(ringGeo, ringMat);
+  baseRing.rotation.x = -Math.PI / 2;
+  baseRing.position.y = 0.02;
+  group.add(baseRing);
+
+  // ② 机体（按原型分发）
+  const body = ARCHETYPE[challenge.archetype]();
+  group.add(body);
+
+  // ③ 锐利线框（状态色，随时可变）
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(body.geometry),
+    new THREE.LineBasicMaterial({ color: STATE_COLOR.idle, transparent: true, opacity: 0.55 })
+  );
+  group.add(edges);
+
+  // ④ 柔光外壳（BackSide 放大 1.08 倍）
+  const aura = new THREE.Mesh(
+    body.geometry.clone(),
+    new THREE.MeshBasicMaterial({
+      color: STATE_COLOR.idle, transparent: true, opacity: 0.0,
+      side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false
+    })
+  );
+  aura.scale.setScalar(1.08);
+  group.add(aura);
+
+  // ⑤ 顶部警示光柱（默认隐藏）
+  const beacon = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.28, 0.05, 5, 12, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: STATE_COLOR.attacking, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+    })
+  );
+  beacon.position.y = 3.2;
+  group.add(beacon);
+
+  // ⑥ 题目全息铭牌
+  const label = createHoloLabel(challenge);
+  label.position.y = 2.7;
+  group.add(label);
+
+  // ⑦ 特效锚点
+  const fxAnchor = new THREE.Object3D();
+  fxAnchor.position.y = 1.0;
+  group.add(fxAnchor);
+
+  group.userData = {
+    challengeId: challenge.id,
+    state: 'idle',
+    baseRing, edges, aura, beacon, label, fxAnchor, body,
+    pulsePhase: Math.random() * Math.PI * 2
+  };
+  return group;
+}
+```
+
+### 6.3 状态视觉矩阵
+
+| 状态 | 主色 | 底座环 | 线框 | 柔光壳 | 警示光柱 | 铭牌 | 附加 |
+|---|---|---|---|---|---|---|---|
+| `idle` 未解 | `#00d4ff` | 慢速自转，opacity 0.55 | opacity 0.45 | opacity 0.05 | 隐藏 | 青色边框 + 「未解」 | 无 |
+| `attacking` 攻击中 | `#ff6b35` | 加速旋转，opacity 0.9，随拍呼吸 | opacity 0.9 脉动 | opacity 0.22 脉动 | 显示，opacity 0.35 脉动 | 橙色边框 + 「解题中」 + 进度环 | 扫描环上下往复 |
+| `failed` 失败闪红 | `#ff3b5c` | 瞬时爆亮 | 闪烁 | 0.45 → 0 | 短暂显示 | 红色 + 「ACCESS DENIED」 | 冲击波 + 粒子 |
+| `solved` 已解 | `#00ff88` | 常亮，opacity 0.75 | opacity 0.7 | opacity 0.16 慢呼吸 | 常亮绿色光柱，opacity 0.20 | 绿色 + 「✓ SOLVED」 | 底座光环向外扩散 2 次后稳定 |
+
+> **首解特殊标记**：`solved && firstBlood` 时，光柱改为金色 `#ffd24a`，铭牌加一个旋转的金色六边形皇冠图标，底座环外加一圈金色细环反向旋转。
+
+**状态切换过渡**：所有颜色变化不直接赋值，而是通过 `lerpColor` 在 0.4s 内平滑过渡，避免生硬闪切。
+
+### 6.4 题目全息铭牌（Holo Label）
+
+- 用 `THREE.Sprite` + `CanvasTexture`，`sizeAttenuation: true`，世界尺寸 `1.8 × 0.72`。
+- Canvas 分辨率 `768 × 307`（保证大屏下清晰）。
+- 版式：
+
+```
+┌────────────────────────────┐
+│ ● AI-02            [未解]  │   ← 编号 + 状态徽章
+│ 提示词注入绕过              │   ← 题目名（最多 12 字，超长省略号）
+└────────────────────────────┘
+```
+
+- 左下角 6px 的题目标识色块（呼应分区主题色）。
+- **悬停时**：铭牌 `scale` 到 `1.15`，描边加粗，并额外弹出一个「悬停提示」小卡片（显示分值、尝试次数）。
+- **状态变更时**：铭牌做一次 `0 → 1` 的竖向"翻牌"动画（`scale.y` 从 0.1 弹回 1，带 overshoot 缓动）。
+
+### 6.5 设备布局（每个分区内）
+
+- 5 台设备按 **五边形** 排布，半径 `2.85`，起始角 `-90°`（正对分区内侧方向）。
+- 各设备 `rotation.y` 朝向分区中心，让机体正面朝向外部（便于观察）。
+- 铭牌 Y 高度交错：`2.45 / 2.75 / 3.05 / 2.75 / 2.45`，减少 Sprite 重叠。
+
+```js
+const N = 5, R = 2.85;
+for (let i = 0; i < N; i++) {
+  const ang = -Math.PI / 2 + (i / N) * Math.PI * 2;
+  node.position.set(Math.cos(ang) * R, 0, Math.sin(ang) * R);
+  node.rotation.y = -ang + Math.PI / 2;  // 机体正面朝外
+  node.userData.label.position.y = 2.45 + (i % 3) * 0.30;
+}
+```
+
+---
+
+## 七、攻击区（选手指挥舱）
+
+### 7.1 平台造型
+
+- **主体**：`CylinderGeometry(5.0, 4.2, 0.5, 8)`（八边形），位于 `(0, 0.9, 20)`，颜色 `#12141c`，边缘红色描边 `#ff3b5c`。
+- **底部光锥**：从平台底面向下打一个半径 4.2 → 0.6 的倒锥，红色透明度 0.05。
+- **中央发射口**：平台中心一个 `TorusGeometry(0.5, 0.06)` 悬浮环 + 内部球体，做「充能」呼吸动画。这是所有攻击光束的起点。
+- **顶部全息牌**：`ATTACK ZONE · 实时攻击源`，红色主题。
+- **防护罩**：平台外围一个半径 5.4 的半透明半球壳（`SphereGeometry` 上半部分，`side: BackSide`，opacity 0.06），加 3 条经线亮环。
+
+### 7.2 选手光点系统
+
+- 每个参赛队伍一个光点（最多 30 个），`SphereGeometry(0.12, 8, 8)` + 加法混合。
+- 分布在 3 条同心轨道上（半径 `2.2 / 3.2 / 4.2`），绕 Y 轴低速公转（速度 0.08 / 0.06 / 0.04 rad/s，反向交错）。
+- 光点颜色取自战队主题色（可从右侧排行数据拿，或预设 8 色循环）。
+- **空闲态**：光点跟随轨道公转，opacity 0.35，尺寸 0.12。
+- **攻击态**：对应光点脱离轨道 → 飞向发射口 → 停留 0.3s 充能（scale 1 → 1.6 → 1）→ 发射光束 → 沿曲线返回轨道，恢复空闲。
+- 光点数量 > 20 时，只显示前 20 个，其余合并在轨道上做光晕。
+
+---
+
+## 八、连线与数据流系统
+
+### 8.1 三层连线
+
+| 层级 | 路径 | 实现 | 视觉 |
+|---|---|---|---|
+| **L1 主干环** | 中心环形总线 | `TorusGeometry(8.6, 0.16)` + 流光 Shader | 青色常驻流光，速度快 |
+| **L2 接入管** | 分区 → 总线环 | `QuadraticBezierCurve3` + `TubeGeometry`（半径 0.08） | 主题色，透明度 0.25，管内粒子缓慢流向环 |
+| **L3 攻击专线** | 攻击区 → 总线 → 目标设备 | `CatmullRomCurve3`（动态生成） | 仅攻击时生成，见第九章 |
+
+### 8.2 接入管生成
+
+```js
+function createAccessPipe(zone) {
+  const inner = zone.innerEdgePoint;    // 平台靠中心侧的边缘点
+  const busPoint = new THREE.Vector3(
+    Math.sin(zone.theta) * 8.6, 0.28, Math.cos(zone.theta) * 8.6
+  );
+  const mid = inner.clone().lerp(busPoint, 0.5);
+  mid.y += 1.2;  // 拱起
+
+  const curve = new THREE.QuadraticBezierCurve3(inner, mid, busPoint);
+  const geo = new THREE.TubeGeometry(curve, 40, 0.07, 6, false);
+
+  // 自定义 Shader：内部数据粒子沿管道流动
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:  { value: 0 },
+      uColor: { value: new THREE.Color(zone.color) },
+      uDir:   { value: 1.0 }   // 1 = 向内流向环，-1 = 向外
+    },
+    vertexShader: /* 传 uv */,
+    fragmentShader: /* 同总线流光，速度更慢 */,
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  return new THREE.Mesh(geo, mat);
+}
+```
+
+### 8.3 分区直连链路（增加"网"的真实感）
+
+额外画 5 条细弧线连接相邻或业务相关的分区，半径 `TubeGeometry(0.035)`，透明度 0.12：
+
+```
+ai-access  ↔ inference
+inference  ↔ compute
+agent      ↔ knowledge
+knowledge  ↔ ops
+ops        ↔ net
+net        ↔ ai-access
+```
+
+这些链路平时几乎不可见，**只在路径被攻击波及时**短暂提亮（用来表现"横向移动"的暗示）。
+
+### 8.4 地面涟漪
+
+- 地面预置一个 `RipplePool`，池内 12 个 `RingGeometry` 平铺在 y=-0.58。
+- 当某分区发生成功/失败事件时，从该分区正下方地面发射一个涟漪，向外扩散到半径 12 后淡出（时长 1.6s）。
+- 成功：绿色；失败：红色。
+
+---
+
+## 九、三类交互动效详解（重点）
+
+### 9.0 攻击路径生成器（三种交互共用）
+
+这是整个场景的技术核心：**任何一次攻击，都必须在拓扑上生成一条"真实路由"的曲线**。
+
+```js
+/**
+ * 生成从攻击区到目标设备的完整攻击路径
+ * 路由：攻击区发射口 → 总线环正面入口 → 沿环弧线行进 → 分区接入点 → 目标设备
+ */
+function buildAttackPath(targetDevice, zone) {
+  const points = [];
+
+  // ① 攻击区发射口
+  const muzzle = new THREE.Vector3(0, 1.9, 19.2);
+  points.push(muzzle);
+
+  // ② 总线环正面入口（θ = 0）
+  const BUS_R = 8.6, BUS_Y = 0.5;
+  points.push(new THREE.Vector3(0, BUS_Y + 0.4, BUS_R));
+
+  // ③ 沿环从 θ=0 走到 zone.theta（分 5 段采样，让曲线贴合环）
+  const STEPS = 5;
+  for (let i = 1; i <= STEPS; i++) {
+    const th = (zone.theta) * (i / STEPS);
+    points.push(new THREE.Vector3(
+      Math.sin(th) * BUS_R,
+      BUS_Y + 0.4 + Math.sin(i / STEPS * Math.PI) * 0.3,  // 沿环轻微拱起
+      Math.cos(th) * BUS_R
+    ));
+  }
+
+  // ④ 分区接入点（平台边缘）
+  points.push(zone.innerEdgePoint.clone().setY(1.0));
+
+  // ⑤ 目标设备上空
+  const world = new THREE.Vector3();
+  targetDevice.getWorldPosition(world);
+  points.push(world.clone().add(new THREE.Vector3(0, 1.6, 0)));
+
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.35);
+  return curve;
+}
+```
+
+> **降级方案**：当同时活跃攻击 > 12 条时，切换为「直线拱起」简化路径（`QuadraticBezierCurve3`），保证性能。
+
+---
+
+### 9.1 交互一：点开题目卡片 → 尝试解题
+
+**触发**：后端事件 `challenge:attempt` 或 3D 中点击设备。
+
+**时间线（总计约 1.6s，之后进入持续态）**
+
+| 时间 | 动作 | 实现要点 |
+|---|---|---|
+| `0.00s` | 选手光点脱离轨道 | 光点位置用 `lerp` 从轨道点飞向发射口，`easeOutCubic`，0.35s |
+| `0.35s` | 发射口充能 | 中心球 scale `1 → 1.5 → 1`，配合一圈快速收缩的 `Torus` |
+| `0.50s` | **生成攻击路径曲线** + 生成光束 Mesh | 曲线用 `buildAttackPath()`；光束用 `TubeGeometry(curve, 128, 0.045, 6, false)` |
+| `0.50s` | 探针头部出发 | 小球 `SphereGeometry(0.18)`，沿 `curve.getPointAt(t)` 运动 |
+| `0.50s ~ 1.30s` | 探针沿曲线飞行，光束"生长" | 光束 Shader 的 `uProgress` 从 0 → 1；探针位置 `t = easeInOutQuad(p)` |
+| `1.30s` | **命中目标** | 触发 `onImpact()` |
+| `1.30s ~ 1.60s` | 目标进入 `attacking` 态 | 颜色 0.3s 内 lerp 到橙色；启动扫描环 |
+| `1.60s ~ ∞` | 持续态 | 光束保留低亮度闪烁（`uProgress = 1`，整体 opacity 0.35，每帧叠加 sin 噪声） |
+
+**命中瞬间的复合特效：**
+
+1. **命中光环**：从设备中心爆发一个 `RingGeometry(0.2, 0.3)`，0.6s 内扩到 `3.5` 并淡出，橙色。
+2. **扫描环**：一个水平 `TorusGeometry(1.1, 0.02)` 从设备底部 y=0 匀速升到 y=2.0，循环往复（周期 1.8s），表现"正在扫描/破解"。
+3. **题目卡片展开**：在设备上方 y=2.0 处生成一个 `PlaneGeometry(1.6, 1.0)` 全息面板，从 `scale.y = 0.01` 展开到 1（0.3s，`easeOutBack`），内容：
+   ```
+   ┌──────────────────┐
+   │ 正在解题          │
+   │ AI-02 提示词注入  │
+   │ ▓▓▓▓▓▓░░░░  62%  │   ← 进度环/进度条，随尝试次数增长
+   │ 选手: 网络护卫队   │
+   └──────────────────┘
+   ```
+   面板以 0.5Hz 轻微上下浮动，透明度 0.85，始终朝向相机（`lookAt(camera)`）。
+4. **总线路径点亮**：光束经过的总线环对应弧段临时提亮（用 `uHighlight` 参数控制该段 opacity 从 0.2 → 0.9），持续到本次攻击结束。
+
+**同时更新：**
+- 分区遥测牌「THREAT」+1，做一次数字滚动动画。
+- 攻击区遥测牌「活跃攻击」+1。
+
+---
+
+### 9.2 交互二：提交 Flag 失败 → 攻击失败
+
+**触发**：`challenge:failed`。
+
+**时间线（总计约 1.8s）**
+
+| 时间 | 动作 | 参数 |
+|---|---|---|
+| `0.00s` | 光束颜色突变 | `uColor` 从橙 `#ff6b35` lerp 到红 `#ff3b5c`，0.12s |
+| `0.00s` | 探针速度陡增 | `t` 在 0.15s 内从当前冲到 1.0（加速撞击） |
+| `0.15s` | **命中防护罩** | 见下方 |
+| `0.15s ~ 1.15s` | 光束碎裂消散 | 光束 `uProgress` 反向回退到 0 + opacity 淡出 |
+| `0.20s ~ 1.40s` | 目标闪红 2 次 | `0.12s 亮 / 0.08s 灭 / 0.12s 亮 / 0.08s 灭`，然后 lerp 回原状态色 |
+| `0.25s ~ 1.75s` | 「ACCESS DENIED」上浮 | 红色文字 Sprite 从设备顶部升起 1.5 单位，1.5s 内 opacity `1 → 0` |
+| `1.40s` | 选手光点沿原路径返回 | 0.5s 回到轨道 |
+| `1.75s` | 清理 | 移除光束、面板、粒子 |
+
+**命中瞬间的复合特效：**
+
+1. **六边形护盾展开**（关键记忆点）：
+   - 在目标设备位置生成一个 `CircleGeometry(1.8, 6)`（六边形），法线朝向攻击来向。
+   - 材质用自定义 Shader 绘制六边形蜂窝网格，青色 `#00d4ff`。
+   - `0.0s`：`scale 0.3 → 1.0`（0.12s，`easeOutExpo`），opacity 0.9。
+   - `0.12s ~ 0.9s`：保持，并叠加一层从命中点向外扩散的环形波纹。
+   - `0.9s ~ 1.3s`：opacity → 0，scale → 1.15。
+   - 护盾出现时，目标设备整体向内轻微"压缩"（scale `1 → 0.96 → 1`）。
+2. **粒子碎裂爆发**：
+   - 从命中点生成 40 个红色小粒子（`Points`，一个 `BufferGeometry`），
+   - 初速度沿攻击路径法线方向 + 随机球面方向，
+   - 初速 `2.5 ~ 6`，阻尼 0.92，重力 `-4`，
+   - 生命周期 1.0s，`opacity` 线性衰减。
+3. **冲击波环**：一个 `RingGeometry` 从命中点沿法线方向扩张，`scale 0.2 → 5`，opacity `0.9 → 0`，0.7s。
+4. **相机微震**：给相机 `position` 叠加 `0.12` 幅度、`0.2s` 的随机抖动（用 `shakeTrauma` 衰减模型），结束后归位。**只在当前攻击是"用户点击触发"或"焦点分区"时才震，避免连续失败导致画面持续抖动。**
+5. **地面涟漪**：从分区正下方地面发出红色涟漪，扩散到半径 12。
+
+**同时更新：**
+- 分区遥测牌「THREAT」-1。
+- 该题目的铭牌短暂显示「已尝试 ×N」。
+
+---
+
+### 9.3 交互三：提交 Flag 成功 → 攻击成功
+
+**触发**：`challenge:solved`。
+
+这是全场最高光时刻，动效要明显强于失败。
+
+**时间线（总计约 3.0s）**
+
+| 时间 | 动作 | 参数 |
+|---|---|---|
+| `0.00s` | 光束颜色翻转为绿 | 橙 → 绿 `#00ff88`，0.2s，同时管径从 0.045 增到 0.075（`scale.x/z` lerp） |
+| `0.00s` | 光束整体亮度拉满 | Shader `uIntensity` 0.6 → 2.0 |
+| `0.00s` | 探针加速冲刺 | 0.2s 内 `t → 1.0` |
+| `0.20s` | **命中** | 见下方复合特效 |
+| `0.20s ~ 1.20s` | 目标状态切换 | 颜色 lerp 到绿色，0.5s |
+| `0.40s ~ 2.40s` | **数据回流** | 一批绿色粒子沿曲线反向（`t: 1 → 0`）飞回攻击区 |
+| `0.40s ~ 2.40s` | 攻击区光点变亮变大 | 对应光点 scale `1 → 2.2 → 1`，外围加一圈金色光环 |
+| `1.00s ~ 2.20s` | 「+500」得分浮字 | 从攻击区光点位置向上升起并淡出 |
+| `2.40s` | 清理光束与临时特效 | 保留设备的 solved 常驻态 |
+
+**命中瞬间的复合特效：**
+
+1. **绿色粒子喷泉**：60 个粒子从设备中心向上喷发，初速 `3 ~ 8`，重力 `-6`，生命 1.6s，颜色在绿→金之间随机。
+2. **多层冲击波**：3 个 `RingGeometry` 依次延迟 0.08s 扩散（`scale 0.2 → 6`，opacity `1 → 0`，0.9s），形成"三重震荡"。
+3. **设备状态翻转动画**：
+   - 机体整体 `scale 1 → 1.15 → 1`（0.35s，`easeOutBack`）。
+   - 底座光环向外"炸开"一下：`scale 1 → 2.2` 同时 opacity 0.9 → 0，然后一个新的常驻光环从 0 淡入到 0.75。
+   - 绿色光柱从设备顶部直冲向上（高度 8），`scale.y 0 → 1`（0.4s），常驻 opacity 0.18。
+4. **全息铭牌翻牌 + 标记**：
+   - 铭牌竖向翻牌动画（`scale.y: 1 → 0.05 → 1`，0.35s）。
+   - 内容更新为「✓ SOLVED」+ 解题战队名。
+   - **首解**：额外弹出一个金色六边形徽章（`CircleGeometry(0.4, 6)`），绕设备顶部缓慢旋转，并在上方生成金色「FIRST BLOOD」文字 Sprite 上浮。
+5. **总线绿色脉冲环游**：
+   - 从命中点对应的总线接入点，沿环形总线朝**两个方向**同时发射一个绿色光脉冲（`TorusGeometry` 局部弧段，用 `thetaLength` 动画模拟），绕环一周后在攻击区入口汇合。
+   - 表现「得分环游全场」的仪式感，耗时 1.8s。
+6. **分区遥测牌更新**：
+   - 得分数字做「滚动增长」动画（从旧值滚动到新值，0.8s）。
+   - 进度条增长。
+   - 整个遥测牌 `scale 1 → 1.12 → 1`，描边闪一次白光。
+7. **地面涟漪 + 光柱**：分区正下方绿色涟漪扩散；分区平台边缘霓虹提亮 1.5s。
+8. **相机轻微推近**：若当前焦点在该分区，相机 `OrbitControls.target` 向该分区偏移 15%（`lerp` 0.8s），1.5s 后缓动回归。**不改变用户手动旋转的角度，只移动 target，避免眩晕。**
+
+---
+
+### 9.4 三种交互的视觉对比总结
+
+| 维度 | 尝试解题 | 攻击失败 | 攻击成功 |
+|---|---|---|---|
+| 光束颜色 | 橙 `#ff6b35` | 红 `#ff3b5c` | 绿 `#00ff88` |
+| 光束形态 | 细管 + 流动脉冲 | 细管 + 抖动噪声 | 粗管 + 高亮 |
+| 命中反馈 | 扫描环启动 | 六边形护盾 + 碎裂 | 三重冲击波 + 粒子喷泉 |
+| 目标状态 | 橙，脉动 | 红闪 2 次后回落 | 绿，常亮 + 光柱 |
+| 全屏影响 | 局部 | 地面红涟漪 + 相机微震 | 总线绿色环游 + 得分浮字 |
+| 音效建议 | 低频蓄能音 | 短促金属撞击 | 上扬和弦 + 金币音 |
+
+---
+
+## 十、相机、拾取与视角控制
+
+### 10.1 OrbitControls 参数
+
+```js
+controls.enableDamping = true;
+controls.dampingFactor = 0.055;
+controls.autoRotate = true;          // 动态拓扑模式
+controls.autoRotateSpeed = 0.35;
+controls.minPolarAngle = Math.PI * 0.08;   // 约 14°
+controls.maxPolarAngle = Math.PI * 0.42;   // 约 76°
+controls.minDistance = 22;
+controls.maxDistance = 72;
+controls.target.set(0, 0, 2);
+```
+
+### 10.2 两种视角预设
+
+| 模式 | 相机位置 | Target | autoRotate | 雾效 |
+|---|---|---|---|---|
+| **全景** | `(0, 34, 44)` | `(0, 0, 0)` | false | 关闭 |
+| **动态拓扑** | `(0, 26, 38)` | `(0, 0, 2)` | true | 开启（`FogExp2(0x0a0e17, 0.012)`） |
+
+- 切换时用 `1.2s` 的 `easeInOutCubic` 插值相机 `position` 与 `controls.target`，`autoRotate` 在插值末尾切换。
+- 切换过程中禁用用户输入（`controls.enabled = false`），完成后恢复。
+
+### 10.3 Raycaster 拾取
+
+```js
+const raycaster = new THREE.Raycaster();
+raycaster.params.Points.threshold = 0.3;
+
+// 拾取目标只检测设备机体（不检测铭牌、光环等装饰）
+const pickTargets = allChallengeNodes.map(n => n.userData.body);
+
+function onPointerMove(e) {
+  const mouse = new THREE.Vector2(
+    (e.clientX / window.innerWidth) * 2 - 1,
+    -(e.clientY / window.innerHeight) * 2 + 1
+  );
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(pickTargets, false);
+
+  if (hits.length > 0) {
+    const node = hits[0].object.parent;
+    if (hovered !== node) {
+      hovered?.userData.setHover(false);
+      hovered = node;
+      node.userData.setHover(true);
+      canvas.style.cursor = 'pointer';
+    }
+  } else {
+    hovered?.userData.setHover(false);
+    hovered = null;
+    canvas.style.cursor = 'grab';
+  }
+}
+```
+
+**悬停表现：**
+- 机体 `scale` 平滑到 `1.06`（0.15s）。
+- 线框 opacity `0.45 → 1.0`。
+- 底座光环外扩出一圈 `RingGeometry`（0.15s）。
+- 铭牌 `scale 1 → 1.15`。
+- 鼠标位置附近浮出 tooltip（DOM 元素，展示题目名、分值、状态）。
+
+**点击表现：**
+- 触发 `node.userData.setSelected(true)`。
+- 在设备的**屏幕投影位置右上角**弹出资产详情卡片（DOM 覆盖层，用 `camera.project()` 换算屏幕坐标）。
+- 同时该设备底座出现一个旋转高亮光环（`TorusGeometry(1.3, 0.04)`，绕 Y 轴 0.5s 转一圈）。
+
+---
+
+## 十一、后处理与整体氛围
+
+### 11.1 后处理链
+
+```js
+const composer = new EffectComposer(renderer);
+
+// 1) 主渲染
+composer.addPass(new RenderPass(scene, camera));
+
+// 2) 辉光（核心）
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(w, h),
+  1.15,   // strength
+  0.65,   // radius
+  0.55    // threshold  —— 调高阈值，避免暗部整体泛白
+);
+composer.addPass(bloom);
+
+// 3) 暗角 + 轻微色差（自定义 ShaderPass）
+composer.addPass(VignetteChromaticPass);
+
+// 4) 抗锯齿
+composer.addPass(new ShaderPass(FXAAShader));
+```
+
+**VignetteChromaticPass 要点：**
+
+```glsl
+uniform sampler2D tDiffuse;
+uniform float uTime;
+varying vec2 vUv;
+void main(){
+  vec2 uv = vUv;
+  vec2 c = uv - 0.5;
+  // 色差：RGB 通道沿径向偏移
+  float d = length(c);
+  vec2 off = c * d * 0.0035;
+  vec3 col;
+  col.r = texture2D(tDiffuse, uv + off).r;
+  col.g = texture2D(tDiffuse, uv).g;
+  col.b = texture2D(tDiffuse, uv - off).b;
+  // 暗角
+  float vig = smoothstep(0.85, 0.35, d);
+  col *= mix(0.55, 1.0, vig);
+  // 细微噪点（可选，增强胶片感）
+  col += (fract(sin(dot(uv, vec2(12.9898,78.233)) + uTime) * 43758.5453) - 0.5) * 0.012;
+  gl_FragColor = vec4(col, 1.0);
+}
+```
+
+### 11.2 渲染器设置
+
+```js
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+```
+
+### 11.3 光照配置
+
+由于绝大多数元素使用 `MeshBasicMaterial` 或带 `emissive` 的材质，光照只用于给机体一点体积感：
+
+```js
+scene.add(new THREE.AmbientLight(0x1a2233, 0.9));
+
+const key = new THREE.DirectionalLight(0x66aaff, 0.55);
+key.position.set(12, 30, 18);
+scene.add(key);
+
+// 每个分区一盏低强度点光，营造局部色温
+zones.forEach(z => {
+  const pl = new THREE.PointLight(z.color, 0.75, 24, 2);
+  pl.position.set(z.x, 3.5, z.z);
+  scene.add(pl);
+});
+```
+
+> **不开启阴影**，用自发光 + Bloom 替代。
+
+### 11.4 背景
+
+- 场景背景色 `#0a0e17`。
+- 远景星点：`Points`，600 个点分布在半径 80~120 的球壳上，尺寸 0.3，颜色随机在 `#1a3a55 ~ #4a90c2` 之间，opacity 0.35，缓慢整体旋转（0.008 rad/s）。
+- 地面下方再铺一层大圆盘 `CircleGeometry(30)`，纯黑，作为视觉"底"，防止星点透到地面下方。
+
+---
+
+## 十二、数据模型与状态机
+
+### 12.1 核心数据结构
+
+```typescript
+interface Zone {
+  id: 'ai-access' | 'inference' | 'agent' | 'knowledge' | 'compute' | 'ops' | 'net';
+  name: string;
+  color: number;
+  theta: number;              // 弧度
+  position: [number, number, number];
+  totalScore: number;
+  score: number;
+  threats: number;
+  challenges: Challenge[];
+}
+
+interface Challenge {
+  id: string;                 // 'AI-01'
+  zoneId: string;
+  name: string;
+  archetype: 'rack' | 'blade' | 'core' | 'tower' | 'console';
+  points: number;
+  state: 'idle' | 'attacking' | 'solved';
+  activeAttacker?: string;    // 正在攻击的战队名
+  activeAttempts: number;     // 当前并发尝试数
+  solvedBy?: string;
+  firstBlood: boolean;
+  lastEventAt: number;
+}
+```
+
+### 12.2 设备状态机
+
+```
+                 attempt
+      ┌─────────────────────────────┐
+      │                             ▼
+   ┌─────┐   failed(无并发)      ┌───────────┐
+   │idle │◄──────────────────────│ attacking │
+   └─────┘                       └───────────┘
+      ▲                                │
+      │                                │ solved
+      │            failed              ▼
+      │        ┌────────────┐      ┌────────┐
+      └────────┤  (闪烁态)   │      │ solved │
+               └────────────┘      └────────┘
+                     ▲                  │
+                     └──────────────────┘
+                    （solved 不可回退）
+```
+
+**状态变更函数：**
+
+```js
+function setChallengeState(node, nextState, payload = {}) {
+  const prev = node.userData.state;
+  if (prev === nextState) return;
+  if (prev === 'solved') return;   // 已解不可回退
+
+  node.userData.state = nextState;
+  const targetColor = STATE_COLOR[nextState];
+
+  // 启动 0.4s 颜色过渡（不直接赋值）
+  tweenColor(node.userData.edges.material, targetColor, 0.4);
+  tweenColor(node.userData.aura.material, targetColor, 0.4);
+  tweenColor(node.userData.baseRing.material, targetColor, 0.4);
+
+  // 各状态专属动画
+  switch (nextState) {
+    case 'attacking':
+      node.userData.startScan();
+      node.userData.beacon.material.opacity = 0.35;
+      break;
+    case 'solved':
+      node.userData.stopScan();
+      node.userData.beacon.material.opacity = 0.20;
+      node.userData.playSolveBurst(payload.firstBlood);
+      break;
+  }
+
+  // 铭牌重绘
+  node.userData.label.userData.redraw(nextState, payload);
+}
+```
+
+### 12.3 主循环（时钟驱动）
+
+```js
+const clock = new THREE.Clock();
+let elapsed = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);   // 限制最大步长，防止切后台后跳变
+  elapsed += dt;
+
+  // 1) 全局统一时间 uniform 更新
+  sharedUniforms.uTime.value = elapsed;
+
+  // 2) 分区悬浮
+  zones.forEach((z, i) => {
+    z.platform.position.y = Math.sin(elapsed * 0.6 + i * 0.9) * 0.08;
+  });
+
+  // 3) 每台设备的状态动画
+  allChallengeNodes.forEach(node => updateNode(node, dt, elapsed));
+
+  // 4) 特效系统
+  beamManager.update(dt);
+  particlePool.update(dt);
+  shockwavePool.update(dt);
+  floatTextPool.update(dt);
+
+  // 5) 攻击区光点公转
+  attackZone.update(dt, elapsed);
+
+  // 6) 控制器 + 后处理
+  controls.update();
+  composer.render();
+}
+```
+
+---
+
+## 十三、性能预算与优化
+
+| 项目 | 预算 | 手段 |
+|---|---|---|
+| Draw Call | ≤ 220 | 静态几何合并；散热鳍片用 `InstancedMesh`；粒子用单个 `Points` |
+| 三角面 | ≤ 180k | 环形总线 128 段已足够；设备机体低多边形 |
+| 纹理内存 | ≤ 90MB | 铭牌 Canvas 统一 768×307；机柜贴图 512×512；同原型共享贴图 |
+| 活跃光束 | ≤ 12 条 | 超出走简化直线路径；同题同队去重 |
+| 粒子总数 | ≤ 2000 | 对象池复用，禁止频繁 `new`/`dispose` |
+| 实时灯光 | 8 盏 | 无阴影 |
+
+**关键优化点：**
+
+1. **对象池**：`ParticleBurst`、`Shockwave`、`FloatText`、`AttackBeam` 全部预分配池化，回收时只 `visible = false` 并重置参数。
+2. **铭牌 Canvas 重绘节流**：只有状态或数值真正变化时才 `texture.needsUpdate = true`；分区遥测牌统一由 `setInterval(1.5s)` 批量刷新。
+3. **CPU 侧矩阵更新**：静态分区平台 `matrixAutoUpdate = false`，初始化时 `updateMatrix()` 一次。
+4. **不可见裁剪**：`frustumCulled` 保持默认 `true`；远景星点用 `sizeAttenuation: false`。
+5. **移动端降级**：`window.innerWidth < 900` 时，Bloom strength 降到 0.8，关闭色差 Pass，光束数量上限降到 6。
+6. **页面不可见时暂停**：`document.hidden` 时 `requestAnimationFrame` 停止渲染，恢复时重置 `clock` 防止 `dt` 跳变。
+
+---
+
+## 十四、关键代码骨架（可直接扩展）
+
+### 14.1 主场景初始化
+
+```js
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+export class CyberRangeScene {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0a0e17);
+    this.scene.fog = new THREE.FogExp2(0x0a0e17, 0.012);
+
+    this.camera = new THREE.PerspectiveCamera(
+      42, canvas.clientWidth / canvas.clientHeight, 0.1, 400
+    );
+    this.camera.position.set(0, 26, 38);
+
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    this.controls = new OrbitControls(this.camera, canvas);
+    // ... 参数见 10.1
+
+    this.composer = new EffectComposer(this.renderer);
+    // ... 后处理链见 11.1
+
+    this.sharedUniforms = { uTime: { value: 0 } };
+
+    this._build();
+    this._bindEvents();
+    this._startLoop();
+  }
+
+  _build() {
+    this.ground = new GroundDisc().build();
+    this.scene.add(this.ground);
+
+    this.busCore = new BusCore(this.sharedUniforms).build();
+    this.scene.add(this.busCore);
+
+    this.zones = ZONE_CONFIG.map(cfg => new Zone(cfg, this.sharedUniforms));
+    this.zones.forEach(z => this.scene.add(z.root));
+
+    this.attackZone = new AttackZone(this.sharedUniforms).build();
+    this.scene.add(this.attackZone.root);
+
+    this.fx = new FXManager(this.scene, this.sharedUniforms);
+  }
+
+  /** 外部调用：选手尝试解题 */
+  onAttempt({ challengeId, team, teamColor }) {
+    const node = this._findNode(challengeId);
+    const zone = this._findZone(node.userData.zoneId);
+
+    this.attackZone.launchOrb(team, teamColor, node, () => {
+      const curve = buildAttackPath(node, zone);
+      this.fx.spawnBeam({
+        curve,
+        color: STATE_COLOR.attacking,
+        team,
+        onArrive: () => {
+          setChallengeState(node, 'attacking', { team });
+          this.fx.spawnScanRing(node);
+          this.fx.spawnChallengeCard(node, { team });
+          zone.telemetry.threats += 1;
+        }
+      });
+    });
+  }
+
+  /** 外部调用：提交 Flag 失败 */
+  onFailed({ challengeId, team }) {
+    const node = this._findNode(challengeId);
+    const beam = this.fx.getBeamByTarget(challengeId);
+    if (beam) {
+      beam.setColor(STATE_COLOR.failed);
+      beam.speedUp(0.15);
+    }
+    this.fx.onBeamArrive(challengeId, () => {
+      this.fx.spawnShieldDome(node);          // 六边形护盾
+      this.fx.spawnParticleBurst(node, 'failed');
+      this.fx.spawnShockwave(node, 'failed');
+      this.fx.spawnFloatText(node, 'ACCESS DENIED', '#ff3b5c');
+      node.userData.flashFail();
+      this._shakeCamera(0.12, 0.2);
+      this.ground.spawnRipple(node.userData.zoneId, 0xff3b5c);
+      this.fx.removeBeam(beam);
+    });
+  }
+
+  /** 外部调用：提交 Flag 成功 */
+  onSolved({ challengeId, team, score, firstBlood }) {
+    const node = this._findNode(challengeId);
+    const zone = this._findZone(node.userData.zoneId);
+    const beam = this.fx.getBeamByTarget(challengeId);
+
+    if (beam) {
+      beam.setColor(STATE_COLOR.solved);
+      beam.thicken(0.075, 0.2);
+      beam.setIntensity(2.0);
+      beam.speedUp(0.2);
+    }
+
+    this.fx.onBeamArrive(challengeId, () => {
+      this.fx.spawnParticleBurst(node, 'solved');       // 粒子喷泉
+      this.fx.spawnTripleShockwave(node);               // 三重冲击波
+      this.fx.spawnDataReturn(beam.curve, node);        // 数据回流
+      this.fx.spawnFloatText(this.attackZone.muzzle, `+${score}`, '#00ff88');
+      setChallengeState(node, 'solved', { team, firstBlood });
+      this.busCore.spawnCircularPulse(node.userData.zoneId, 0x00ff88);
+      this.ground.spawnRipple(node.userData.zoneId, 0x00ff88);
+      zone.telemetry.addScore(score);
+      zone.telemetry.pulse();
+      this.fx.removeBeam(beam);
+    });
+  }
+}
+```
+
+### 14.2 攻击光束 Shader
+
+```js
+const beamVertex = /* glsl */`
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const beamFragment = /* glsl */`
+  uniform float uTime;
+  uniform float uProgress;    // 0 → 1，光束生长进度
+  uniform float uIntensity;
+  uniform vec3  uColor;
+  varying vec2  vUv;
+
+  void main() {
+    // 沿管长的能量脉冲
+    float flow = fract(vUv.x * 8.0 - uTime * 3.0);
+    float pulse = pow(1.0 - abs(flow * 2.0 - 1.0), 6.0);
+
+    // 头部高亮（uProgress 处）
+    float head = smoothstep(uProgress - 0.04, uProgress, vUv.x)
+               * smoothstep(uProgress + 0.02, uProgress, vUv.x);
+
+    // 生长遮罩：uProgress 之前的才显示
+    float grow = step(vUv.x, uProgress);
+
+    // 管壁径向高光
+    float rim = pow(1.0 - abs(vUv.y - 0.5) * 2.0, 2.0);
+
+    float a = grow * (0.35 + pulse * 0.65 + head * 1.2) * rim;
+    vec3 col = uColor * (1.0 + pulse * 1.5 + head * 4.0) * uIntensity;
+
+    gl_FragColor = vec4(col, a);
+  }
+`;
+```
+
+### 14.3 探针沿曲线飞行
+
+```js
+update(dt) {
+  if (this.arrived) return;
+
+  this.progress += dt / this.duration;
+  const t = Math.min(this.progress, 1.0);
+  const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+  // 探针位置
+  this.curve.getPointAt(eased, this._tmpVec);
+  this.probe.position.copy(this._tmpVec);
+  this.probe.scale.setScalar(1 + Math.sin(eased * Math.PI) * 0.6);
+
+  // 光束生长
+  this.beamMat.uniforms.uProgress.value = eased;
+
+  // 拖尾：把最近 8 帧的位置记录到一个 Line 的 BufferGeometry
+  this._pushTrailPoint(this._tmpVec);
+
+  if (t >= 1.0) {
+    this.arrived = true;
+    this.onArrive?.();
+  }
+}
+```
+
+---
+
+## 十五、交付清单（建议开发顺序）
+
+| 阶段 | 内容 | 预估 |
+|---|---|---|
+| P0 | 场景骨架 + 相机 + 后处理 + 地面 + 中心枢纽 | 1.5d |
+| P1 | 7 个分区平台 + 遥测牌 + 接入管 | 2d |
+| P2 | 5 种设备原型 + 通用包装层 + 状态机 | 3d |
+| P3 | 攻击区 + 选手光点系统 | 1.5d |
+| P4 | 攻击路径生成 + 光束系统 + 探针 | 2.5d |
+| P5 | 三类交互动效 + 粒子/冲击波/文字池 | 3d |
+| P6 | Raycaster 拾取 + 资产详情弹窗 + 视角切换 | 1.5d |
+| P7 | 性能调优 + 移动端降级 + 联调 | 2d |
+
+---
+
+**总结**：这套设计的核心差异点是「**真实路由攻击路径**」和「**五原型设备 + 四态视觉矩阵**」。它让 3D 场景不再是装饰性背景，而是把 CTF 的「尝试 → 失败 → 成功」三种事件，映射成三套完全不同的空间叙事——失败是护盾与碎裂，成功是粒子喷泉与总线环游，玩家一眼就能从颜色、路径、节奏上读出赛场的实时态势。

@@ -1,0 +1,6 @@
+{
+  "name": "长城杯 CTF 3D 攻防态势沙盘",
+  "description": "算力中心机房拓扑与 CTF 解题赛实时攻防态势融合的三维可视化指挥沙盘系统",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
