@@ -565,9 +565,15 @@ export default function App() {
     return { left, top };
   }, [selectedInfo, panelsHidden]);
 
+  const isWireframe = sandboxVersion === '0.3';
+
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#0a0e17] flex flex-col select-none">
-      {/* 底层 3D WebGL 沙盘（全屏铺底，左右面板毛玻璃可透出 3D 微光） */}
+    <div
+      className={`relative w-screen h-screen overflow-hidden flex flex-col select-none transition-colors duration-700 ${
+        isWireframe ? 'bg-black' : 'bg-[#0a0e17]'
+      }`}
+    >
+      {/* 底层 3D WebGL 沙盘（全屏铺底，左右面板毛玻璃或透明线框可透出 3D 场景） */}
       <div
         ref={canvasMountRef}
         className="fixed inset-0 w-full h-full z-0"
@@ -587,11 +593,11 @@ export default function App() {
       )}
 
       {/* 顶部 Header 栏 (72px，居中渐变，两侧透明) */}
-      <HeaderBar onResetCamera={handleResetView} />
+      <HeaderBar onResetCamera={handleResetView} wireframeMode={isWireframe} />
 
       {/* 左侧三卡片面板（支持平滑左滑隐藏 .slide-out-left） */}
       <div
-        className={`fixed top-[76px] bottom-3 left-3 z-10 w-[288px] xl:w-[316px] 2xl:w-[340px] pointer-events-none panel-rail ${
+        className={`fixed top-[76px] bottom-3 left-3 z-10 w-[280px] xl:w-[308px] 2xl:w-[328px] pointer-events-none panel-rail ${
           panelsHidden ? 'slide-out-left' : ''
         }`}
       >
@@ -604,12 +610,13 @@ export default function App() {
           activeZoneFocus={activeZoneFocus}
           onFocusZone={(zid) => handleFocusZone(zid)}
           zones={zonesRef.current}
+          wireframeMode={isWireframe}
         />
       </div>
 
       {/* 右侧双卡片面板（支持平滑右滑隐藏 .slide-out-right） */}
       <div
-        className={`fixed top-[76px] bottom-3 right-3 z-10 w-[288px] xl:w-[316px] 2xl:w-[340px] pointer-events-none panel-rail ${
+        className={`fixed top-[76px] bottom-3 right-3 z-10 w-[280px] xl:w-[308px] 2xl:w-[328px] pointer-events-none panel-rail ${
           panelsHidden ? 'slide-out-right' : ''
         }`}
       >
@@ -620,6 +627,7 @@ export default function App() {
           focusTeamName="网络护卫队"
           onSelectTeam={(tName) => setDirectorTeam(tName)}
           onRefreshRanking={() => setUiTick((t) => t + 1)}
+          wireframeMode={isWireframe}
         />
       </div>
 
@@ -628,7 +636,7 @@ export default function App() {
         className={`fixed top-[76px] bottom-3 z-10 pointer-events-none flex flex-col justify-end items-center transition-[left,right] duration-[400ms] ease-in-out ${
           panelsHidden
             ? 'left-4 right-4'
-            : 'left-[312px] xl:left-[340px] 2xl:left-[364px] right-[312px] xl:right-[340px] 2xl:right-[364px]'
+            : 'left-[304px] xl:left-[332px] 2xl:left-[352px] right-[304px] xl:right-[332px] 2xl:right-[352px]'
         }`}
       >
         {/* 3D 场景右上角悬浮控制按钮 */}
@@ -641,6 +649,7 @@ export default function App() {
             onTogglePanelsHidden={handleTogglePanelsHidden}
             attackFollow={attackFollowEnabled}
             onToggleAttackFollow={handleToggleAttackFollow}
+            wireframeMode={isWireframe}
           />
         </div>
 

@@ -10,6 +10,7 @@ import {
 import {
   createChallengeHoloLabel,
   createConsoleScreenTexture,
+  createContactShadowTexture,
   createGpuFanFaceTexture,
   createRackFrontTexture,
   createV03BrushedMetalTexture,
@@ -43,6 +44,21 @@ export interface ChallengeNodeUserData {
   v02DetailGroup: THREE.Group; // v0.2 Reference design specialized 3D hardware model
   v03DetailGroup: THREE.Group; // v0.3 Hyper-realistic dark titanium, carbon fiber & matte black kitbash hardware
   v04DetailGroup: THREE.Group; // v0.4 Futuristic tactical sandbox hardware (polished silver, frosted white ceramic, transparent acrylic glass)
+  v01TronWireGroup: THREE.Group; // 0.1版 (Tron Cyber Wireframe) pure glowing EdgesGeometry wireframe group
+  tronPrimaryMat: THREE.LineBasicMaterial;
+  tronSeamMat: THREE.LineBasicMaterial;
+  contactShadowMesh: THREE.Mesh;
+  solidMeshes: {
+    mesh: THREE.Mesh;
+    origMat: THREE.Material;
+    fadeMat: THREE.Material;
+    origOpacity: number;
+  }[];
+  existingEdgeLines: {
+    line: THREE.LineSegments;
+    origOpacity: number;
+  }[];
+  wireframeMix: number;
   statusMat: THREE.MeshStandardMaterial; // Emissive trim material driven by state color
   beacon: THREE.Mesh;
   scanRing: THREE.Mesh;
@@ -68,6 +84,7 @@ export interface ChallengeNodeUserData {
   setSelected: (sel: boolean) => void;
   setLabelMode: (mode: LabelDisplayMode) => void;
   setVersion: (version: SandboxVersion) => void;
+  setWireframeMix: (mix: number) => void;
   flashFail: (attempts: number) => void;
   transitionState: (
     nextState: Challenge['state'],
@@ -406,89 +423,84 @@ export function createSharedNodePalette(maxAnisotropy = 4): SharedNodePalette {
     },
     v03: {
       matteBlackMat: new THREE.MeshStandardMaterial({
-        color: 0x4c607a,
-        map: v03BrushedTex,
+        color: 0x8899aa,
         bumpMap: v03BrushedTex,
         bumpScale: 0.013,
-        metalness: 0.92,
-        roughness: 0.16,
-        envMapIntensity: 2.75,
+        metalness: 0.4,
+        roughness: 0.6,
+        envMapIntensity: 1.0,
       }),
       carbonFiberMat: new THREE.MeshStandardMaterial({
-        color: 0x586f8c,
-        map: v03CarbonTex,
+        color: 0x8899aa,
         bumpMap: v03CarbonTex,
         bumpScale: 0.014,
-        metalness: 0.90,
-        roughness: 0.15,
-        envMapIntensity: 2.65,
+        metalness: 0.4,
+        roughness: 0.6,
+        envMapIntensity: 1.0,
       }),
       brushedTitaniumMat: new THREE.MeshStandardMaterial({
-        color: 0x9bb5d4,
-        map: v03BrushedTex,
+        color: 0x8899aa,
         bumpMap: v03BrushedTex,
         bumpScale: 0.009,
-        metalness: 0.96,
-        roughness: 0.10,
-        envMapIntensity: 3.0,
+        metalness: 0.4,
+        roughness: 0.6,
+        envMapIntensity: 1.0,
       }),
       darkTitaniumMat: new THREE.MeshStandardMaterial({
-        color: 0x69819f,
-        map: v03BrushedTex,
+        color: 0x8899aa,
         bumpMap: v03BrushedTex,
         bumpScale: 0.010,
-        metalness: 0.94,
-        roughness: 0.14,
-        envMapIntensity: 2.75,
+        metalness: 0.4,
+        roughness: 0.6,
+        envMapIntensity: 1.0,
       }),
       metalEdgeRimMat: new THREE.LineBasicMaterial({
-        color: 0xa5f3fc,
+        color: 0x00d4ff,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.55,
       }),
       pureCyanGlowMat: new THREE.MeshStandardMaterial({
-        color: 0x00b4d8,
-        emissive: 0x0096c7,
-        emissiveIntensity: 0.65,
+        color: 0x00d4ff,
+        emissive: 0x00c8ff,
+        emissiveIntensity: 1.05,
+        metalness: 0.3,
         roughness: 0.2,
       }),
       deepBlueGlowMat: new THREE.MeshStandardMaterial({
         color: 0x0ea5e9,
         emissive: 0x0284c7,
-        emissiveIntensity: 0.52,
+        emissiveIntensity: 0.85,
+        metalness: 0.3,
         roughness: 0.22,
       }),
       rackFrontMat: new THREE.MeshStandardMaterial({
+        color: 0x8899aa,
         map: v03RackTex,
         bumpMap: v03RackTex,
         bumpScale: 0.01,
-        roughness: 0.22,
-        metalness: 0.86,
-        emissive: new THREE.Color(0x071a2e),
-        emissiveMap: v03RackTex,
-        emissiveIntensity: 0.36,
-        envMapIntensity: 2.2,
+        metalness: 0.4,
+        roughness: 0.6,
+        envMapIntensity: 1.0,
       }),
       bayFrontMat: new THREE.MeshStandardMaterial({
+        color: 0x8899aa,
         map: v03BayTex,
         bumpMap: v03BayTex,
         bumpScale: 0.012,
-        roughness: 0.22,
-        metalness: 0.86,
-        emissive: new THREE.Color(0x061b30),
-        emissiveMap: v03BayTex,
-        emissiveIntensity: 0.38,
-        envMapIntensity: 2.2,
+        metalness: 0.4,
+        roughness: 0.6,
+        envMapIntensity: 1.0,
       }),
       towerLatticeMat: new THREE.MeshStandardMaterial({
-        color: 0x647a96,
-        metalness: 0.94,
-        roughness: 0.15,
+        color: 0x8899aa,
+        metalness: 0.4,
+        roughness: 0.6,
+        envMapIntensity: 1.0,
         wireframe: true,
       }),
       consoleScreenMat: new THREE.MeshBasicMaterial({
         map: v03ConsoleTex,
-        color: 0x56b4d8,
+        color: 0x4ca6c8,
       }),
     },
     v04: {
@@ -2567,7 +2579,91 @@ function buildV03ChallengeMesh(
 }
 
 /**
- * 创建每台设备的通用包装层（支持 v0.1 经典工业版 / v0.2 全息星际版 / v0.3 暗黑钛金版 一键无损切换）
+ * 提取 3D 硬件模型组的纯发光边缘线框（0.1版 赛博线框风 / Tron 风格）
+ * - 主模型外轮廓边缘：纯正科技青 0x00d4ff (opacity: 0.9)
+ * - 模型内部接缝（如服务器分层、刀片、格栅）：淡青色 0x88eeff (opacity: 0.4)
+ */
+export function buildTronWireframeFromGroup(
+  sourceGroup: THREE.Group,
+  primaryMat: THREE.LineBasicMaterial,
+  seamMat: THREE.LineBasicMaterial
+): THREE.Group {
+  const wireRoot = new THREE.Group();
+  sourceGroup.updateMatrixWorld(true);
+  const rootInverse = new THREE.Matrix4().copy(sourceGroup.matrixWorld).invert();
+  const relMatrix = new THREE.Matrix4();
+  const bbox = new THREE.Box3();
+  const size = new THREE.Vector3();
+
+  sourceGroup.traverse((obj) => {
+    if (!(obj as THREE.Mesh).isMesh) return;
+    const mesh = obj as THREE.Mesh;
+    const geo = mesh.geometry;
+    if (!geo) return;
+
+    // 跳过地面接触阴影贴片
+    if (geo.type === 'PlaneGeometry' && mesh.position.y < 0.05 && Math.abs(mesh.rotation.x) > 1.0) {
+      return;
+    }
+
+    geo.computeBoundingBox();
+    if (!geo.boundingBox) return;
+    bbox.copy(geo.boundingBox);
+    bbox.getSize(size);
+
+    // 跳过极微小 LED 灯珠点（避免线框密集糊成团），保留所有机柜主体、刀片层、冷却管、显控屏与结构件
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (maxDim < 0.09) return;
+
+    relMatrix.multiplyMatrices(rootInverse, mesh.matrixWorld);
+
+    // 判断属于主模型外轮廓 (0x00d4ff, opacity 0.9) 还是内部结构接缝/分层 (0x88eeff, opacity 0.4)
+    const volume = size.x * size.y * size.z;
+    const isPrimaryOuter =
+      maxDim >= 0.62 ||
+      volume >= 0.14 ||
+      geo.type === 'TubeGeometry' ||
+      geo.type === 'ConeGeometry';
+
+    const edgesGeo = new THREE.EdgesGeometry(geo, 22);
+    const lineSeg = new THREE.LineSegments(edgesGeo, isPrimaryOuter ? primaryMat : seamMat);
+    lineSeg.matrixAutoUpdate = false;
+    lineSeg.matrix.copy(relMatrix);
+    wireRoot.add(lineSeg);
+
+    // 若为立式机柜主体（高度 > 1.15 且宽度 > 0.5），额外生成 5 层水平服务器分层内部接缝线 (0x88eeff, opacity 0.4)
+    if (size.y > 1.15 && size.x > 0.5 && size.z > 0.45) {
+      const seamPts: THREE.Vector3[] = [];
+      const hx = size.x * 0.485;
+      const hz = size.z * 0.485;
+      const layers = 6;
+      for (let k = 1; k < layers; k++) {
+        const ly = bbox.min.y + (size.y * k) / layers;
+        // 前后左右四条内部服务器托盘接缝线
+        seamPts.push(
+          new THREE.Vector3(-hx, ly, hz),
+          new THREE.Vector3(hx, ly, hz),
+          new THREE.Vector3(hx, ly, hz),
+          new THREE.Vector3(hx, ly, -hz),
+          new THREE.Vector3(hx, ly, -hz),
+          new THREE.Vector3(-hx, ly, -hz),
+          new THREE.Vector3(-hx, ly, -hz),
+          new THREE.Vector3(-hx, ly, hz)
+        );
+      }
+      const seamGeo = new THREE.BufferGeometry().setFromPoints(seamPts);
+      const seamLines = new THREE.LineSegments(seamGeo, seamMat);
+      seamLines.matrixAutoUpdate = false;
+      seamLines.matrix.copy(relMatrix);
+      wireRoot.add(seamLines);
+    }
+  });
+
+  return wireRoot;
+}
+
+/**
+ * 创建每台设备的通用包装层（支持 0.1 赛博线框版 与 0.2 暗黑金属中央突击版 无缝溶解切换）
  */
 export function createChallengeNode(
   challenge: Challenge,
@@ -2592,26 +2688,27 @@ export function createChallengeNode(
       ? STATE_COLOR.firstBlood
       : STATE_COLOR[challenge.state];
 
-  // 状态驱动的自发光装饰材质（嵌在设备实体零件上，清晰表达四态而不产生光污染）
+  // 状态驱动的自发光装饰材质（严格控制在 Bloom 阈值 0.95 以下，杜绝表面爆白）
   const statusMat = new THREE.MeshStandardMaterial({
     color: initStateColorHex,
     emissive: initStateColorHex,
-    emissiveIntensity: challenge.state === 'idle' ? 0.55 : 1.1,
+    emissiveIntensity: challenge.state === 'idle' ? 0.28 : 0.65,
     metalness: 0.4,
     roughness: 0.25,
   });
 
-  // ① 底座战术双光环（克制透明度，不泛白）
+  // ① 底座战术光环：平时默认隐藏，仅被选中或正在受击时显示
   const ringMat = new THREE.MeshBasicMaterial({
     color: initStateColorHex,
     transparent: true,
-    opacity: challenge.state === 'idle' ? 0.42 : 0.72,
+    opacity: challenge.state === 'attacking' ? 0.72 : 0,
     side: THREE.DoubleSide,
     depthWrite: false,
   });
   const baseRing = new THREE.Mesh(palette.baseRingGeo, ringMat);
   baseRing.rotation.x = -Math.PI / 2;
   baseRing.position.y = 0.025;
+  baseRing.visible = challenge.state === 'attacking';
   group.add(baseRing);
 
   // 悬停外扩光环
@@ -2649,6 +2746,81 @@ export function createChallengeNode(
     palette,
     false
   );
+
+  const solidMeshes: {
+    mesh: THREE.Mesh;
+    origMat: THREE.Material;
+    fadeMat: THREE.Material;
+    origOpacity: number;
+  }[] = [];
+  const existingEdgeLines: {
+    line: THREE.LineSegments;
+    origOpacity: number;
+  }[] = [];
+
+  v03DetailGroup.traverse((obj) => {
+    if ((obj as THREE.Mesh).isMesh) {
+      const m = obj as THREE.Mesh;
+      const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material;
+      if (!mat?.transparent) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+      }
+      const fadeClone = mat.clone();
+      fadeClone.transparent = true;
+      solidMeshes.push({
+        mesh: m,
+        origMat: mat,
+        fadeMat: fadeClone,
+        origOpacity: typeof mat.opacity === 'number' ? mat.opacity : 1.0,
+      });
+    } else if ((obj as THREE.LineSegments).isLineSegments) {
+      const ls = obj as THREE.LineSegments;
+      const lMat = (ls.material as THREE.LineBasicMaterial).clone();
+      lMat.transparent = true;
+      ls.material = lMat;
+      existingEdgeLines.push({
+        line: ls,
+        origOpacity: typeof lMat.opacity === 'number' ? lMat.opacity : 0.32,
+      });
+    }
+  });
+
+  // 构建 0.1版 (Tron 赛博线框风) 专属边缘线框组：纯青色 0x00d4ff + opacity 0.9 + AdditiveBlending 叠加混合，呈现清晰锐利的霓虹灯管发光质感
+  const tronPrimaryMat = new THREE.LineBasicMaterial({
+    color: 0x00d4ff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const tronSeamMat = new THREE.LineBasicMaterial({
+    color: 0x00d4ff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const v01TronWireGroup = buildTronWireframeFromGroup(
+    v03DetailGroup,
+    tronPrimaryMat,
+    tronSeamMat
+  );
+  v01TronWireGroup.visible = false;
+  group.add(v01TronWireGroup);
+
+  const contactShadowMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.15, 1.9),
+    new THREE.MeshBasicMaterial({
+      map: createContactShadowTexture(),
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false,
+    })
+  );
+  contactShadowMesh.rotation.x = -Math.PI / 2;
+  contactShadowMesh.position.y = 0.022;
+  v03DetailGroup.add(contactShadowMesh);
   group.add(v03DetailGroup);
 
   // ③ 顶部细束战术状态光针（v0.3 / v0.4 下完全隐藏以杜绝光污染）
@@ -2729,6 +2901,13 @@ export function createChallengeNode(
     v02DetailGroup,
     v03DetailGroup,
     v04DetailGroup,
+    v01TronWireGroup,
+    tronPrimaryMat,
+    tronSeamMat,
+    contactShadowMesh,
+    solidMeshes,
+    existingEdgeLines,
+    wireframeMix: initVer === '0.3' ? 1 : 0,
     statusMat,
     beacon,
     scanRing,
@@ -2758,6 +2937,7 @@ export function createChallengeNode(
         hovered: hover,
         isV03: true,
         isV03Abstract: true,
+        isTronWireframe: userData.version === '0.3',
       });
     },
     setSelected(sel: boolean) {
@@ -2769,7 +2949,6 @@ export function createChallengeNode(
     },
     setVersion(ver: SandboxVersion) {
       userData.version = ver;
-      v03DetailGroup.visible = true;
       beacon.visible = false;
       firstBloodCrown.visible = false;
       group.position.copy(userData.v01Pos);
@@ -2780,7 +2959,42 @@ export function createChallengeNode(
         hovered: userData.hovered,
         isV03: true,
         isV03Abstract: true,
+        isTronWireframe: ver === '0.3',
       });
+    },
+    setWireframeMix(mix: number) {
+      const clamped = Math.max(0, Math.min(1, mix));
+      userData.wireframeMix = clamped;
+      const solidAlpha = 1.0 - clamped;
+
+      // 1) 线框组透明度平滑渐入 (纯青色 0x00d4ff, opacity: 0.9 + AdditiveBlending)
+      v01TronWireGroup.visible = clamped > 0.005;
+      tronPrimaryMat.opacity = 0.9 * clamped;
+      tronSeamMat.opacity = 0.45 * clamped;
+
+      // 2) 实体机柜 Mesh 表面平滑“溶解”消失，完全切入 0.1版 时隐藏实体 Mesh 释放渲染开销
+      v03DetailGroup.visible = solidAlpha > 0.005;
+      contactShadowMesh.visible = solidAlpha > 0.15;
+      (contactShadowMesh.material as THREE.MeshBasicMaterial).opacity = 0.78 * solidAlpha;
+
+      if (solidAlpha > 0.005) {
+        const useFadeMat = clamped > 0.005;
+        for (let i = 0; i < solidMeshes.length; i++) {
+          const item = solidMeshes[i];
+          if (useFadeMat) {
+            if (item.mesh.material !== item.fadeMat) {
+              item.mesh.material = item.fadeMat;
+            }
+            item.fadeMat.opacity = item.origOpacity * solidAlpha;
+          } else if (item.mesh.material !== item.origMat) {
+            item.mesh.material = item.origMat;
+          }
+        }
+        for (let i = 0; i < existingEdgeLines.length; i++) {
+          const el = existingEdgeLines[i];
+          (el.line.material as THREE.LineBasicMaterial).opacity = el.origOpacity * solidAlpha;
+        }
+      }
     },
     flashFail(attempts: number) {
       userData.failFlashTimer = 1.25;
@@ -2790,6 +3004,7 @@ export function createChallengeNode(
         hovered: userData.hovered,
         isV03: true,
         isV03Abstract: true,
+        isTronWireframe: userData.version === '0.3',
       });
     },
     transitionState(
@@ -2825,12 +3040,14 @@ export function createChallengeNode(
         hovered: userData.hovered,
         isV03: true,
         isV03Abstract: true,
+        isTronWireframe: userData.version === '0.3',
       });
     },
   };
 
   group.userData = userData;
   userData.setVersion(initVer);
+  userData.setWireframeMix(initVer === '0.3' ? 1 : 0);
   return group;
 }
 
@@ -2839,7 +3056,7 @@ const _v03DeepBlue = new THREE.Color(0x0284c7);
 const _v03WarmRed = new THREE.Color(0xff2e1f);
 
 /**
- * 每帧更新单台设备节点的状态动画、材质发光与铭牌显隐模式（适配 v0.3 与 v0.5）
+ * 每帧更新单台设备节点的状态动画、材质发光与铭牌显隐模式（适配 0.1 赛博线框版 与 0.2 中央突击版）
  */
 export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: number) {
   const ud = node.userData as ChallengeNodeUserData;
@@ -2861,6 +3078,7 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
   const activeDetail = ud.v03DetailGroup;
   const currScale = THREE.MathUtils.damp(activeDetail.scale.x, scaleMod, 14, dt);
   activeDetail.scale.setScalar(currScale);
+  ud.v01TronWireGroup.scale.setScalar(currScale);
 
   // 0.4s 颜色平滑过渡
   if (ud.colorLerpTimer > 0) {
@@ -2885,6 +3103,7 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
         hovered: ud.hovered,
         isV03: true,
         isV03Abstract: true,
+        isTronWireframe: ud.version === '0.3',
       });
     }
   }
@@ -2898,6 +3117,10 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     displayColor = _v03DeepBlue;
   }
 
+  // 0.1版 (Tron 赛博线框风)：机柜线框采用纯青色 0x00d4ff + AdditiveBlending
+  ud.tronPrimaryMat.color.setHex(0x00d4ff);
+  ud.tronSeamMat.color.setHex(0x00d4ff);
+
   const ringMat = ud.baseRing.material as THREE.MeshBasicMaterial;
   const beaconMat = ud.beacon.material as THREE.MeshBasicMaterial;
   const scanMat = ud.scanRing.material as THREE.MeshBasicMaterial;
@@ -2906,29 +3129,39 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
   ud.statusMat.emissive.copy(displayColor);
   ringMat.color.copy(displayColor);
   beaconMat.color.copy(displayColor);
-  scanMat.color.setHex(0xff2e1f);
+  scanMat.color.setHex(0xff3300);
 
   const pulse = Math.sin(elapsed * 4.5 + ud.pulsePhase) * 0.5 + 0.5;
-  if (ud.state === 'idle') {
-    ud.baseRing.rotation.z += dt * 0.35;
-    ringMat.opacity = ud.hovered ? 0.75 : 0.22;
-    ud.statusMat.emissiveIntensity = ud.hovered ? 0.85 : 0.45;
-    beaconMat.opacity = THREE.MathUtils.damp(beaconMat.opacity, 0, 8, dt);
-    scanMat.opacity = THREE.MathUtils.damp(scanMat.opacity, 0, 10, dt);
-  } else if (ud.state === 'attacking') {
+  const isUnderAttack = ud.state === 'attacking' || ud.failFlashTimer > 0;
+
+  // 严格隐藏平时底座光环，仅当设备被选中或正处于受击/拦截状态时显示红圈/选中圈
+  if (isUnderAttack) {
+    ud.baseRing.visible = true;
     ud.baseRing.rotation.z += dt * 1.8;
-    ringMat.opacity = 0.58 + pulse * 0.25;
-    ud.statusMat.emissiveIntensity = 0.9 + pulse * 0.45;
+    ringMat.color.setHex(ud.version === '0.3' ? 0xff3300 : 0xff2e1f);
+    ringMat.opacity = 0.62 + pulse * 0.22;
+    ud.statusMat.emissiveIntensity = 0.55 + pulse * 0.24;
     beaconMat.opacity = 0;
-    scanMat.opacity = 0.55;
+    ud.scanRing.visible = ud.state === 'attacking';
+    scanMat.opacity = ud.state === 'attacking' ? 0.48 : 0;
     const scanPhase = (elapsed % 1.8) / 1.8;
     ud.scanRing.position.y = Math.sin(scanPhase * Math.PI) * 1.85 + 0.1;
-  } else if (ud.state === 'solved') {
-    ud.baseRing.rotation.z += dt * 0.65;
-    ringMat.opacity = 0.45;
-    ud.statusMat.emissiveIntensity = 0.68;
+  } else if (ud.selected) {
+    ud.baseRing.visible = true;
+    ud.baseRing.rotation.z += dt * 0.85;
+    ringMat.color.copy(_v03CoolCyan);
+    ringMat.opacity = 0.58;
+    ud.statusMat.emissiveIntensity = ud.state === 'solved' ? 0.42 : 0.35;
     beaconMat.opacity = 0;
-    scanMat.opacity = THREE.MathUtils.damp(scanMat.opacity, 0, 10, dt);
+    ud.scanRing.visible = false;
+    scanMat.opacity = 0;
+  } else {
+    ud.baseRing.visible = false;
+    ringMat.opacity = 0;
+    ud.scanRing.visible = false;
+    scanMat.opacity = 0;
+    beaconMat.opacity = 0;
+    ud.statusMat.emissiveIntensity = ud.state === 'solved' ? 0.42 : ud.hovered ? 0.48 : 0.28;
   }
 
   if (ud.selected) {

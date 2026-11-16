@@ -26,12 +26,36 @@
 }
 
 .font-tech-num {
-  font-family: 'DIN Alternate', 'Orbitron', 'JetBrains Mono', monospace;
+  font-family: 'Share Tech Mono', 'DIN Alternate', 'Orbitron', 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
 }
 
+.font-hud-mono {
+  font-family: 'Share Tech Mono', 'Orbitron', 'DIN Alternate', 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.rank-hollow-gold {
+  color: transparent;
+  -webkit-text-stroke: 1.35px #ffd700;
+  filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.45));
+}
+
+.rank-hollow-silver {
+  color: transparent;
+  -webkit-text-stroke: 1.35px #e2e8f0;
+  filter: drop-shadow(0 0 6px rgba(226, 232, 240, 0.4));
+}
+
+.rank-hollow-bronze {
+  color: transparent;
+  -webkit-text-stroke: 1.35px #f59e0b;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.4));
+}
+
 .font-mono-tabular {
-  font-family: 'DIN Alternate', 'Orbitron', 'JetBrains Mono', monospace;
+  font-family: 'Share Tech Mono', 'DIN Alternate', 'Orbitron', 'JetBrains Mono', monospace;
   font-variant-numeric: tabular-nums;
 }
 

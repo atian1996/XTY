@@ -41,6 +41,7 @@ interface LeftDashboardProps {
   activeZoneFocus: ZoneId | 'attack' | 'all';
   onFocusZone: (zoneId: ZoneId) => void;
   zones: ZoneConfig[];
+  wireframeMode?: boolean;
 }
 
 function useAnimatedNumber(target: number, durationMs = 950) {
@@ -110,6 +111,7 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
   firstBloods,
   activeZoneFocus,
   onFocusZone,
+  wireframeMode = false,
 }) => {
   const { display: animSolvePct, flashing: flashSolve } =
     useAnimatedNumber(solveProgressPct);
@@ -145,20 +147,38 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
   const strokeDashoffset = circumference * (1 - clampedPct / 100);
 
   return (
-    <aside className="pointer-events-auto w-[288px] xl:w-[316px] 2xl:w-[340px] shrink-0 h-full flex flex-col gap-3 min-h-0">
+    <aside className="pointer-events-auto w-[280px] xl:w-[308px] 2xl:w-[328px] shrink-0 h-full flex flex-col gap-2.5 min-h-0">
       {/* 左侧面板 1：全局态势概览 (Global Overview) ~22% */}
-      <CyberPanel className="flex-[22] min-h-[150px]" innerClassName="px-3.5 py-2.5 justify-between">
+      <CyberPanel
+        wireframeMode={wireframeMode}
+        className="flex-[22] min-h-[150px]"
+        innerClassName="px-3 py-2.5 justify-between"
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="w-2 h-2 bg-[#00d4ff] rotate-45 inline-block shrink-0 shadow-[0_0_8px_#00d4ff]" />
-            <h2 className="text-[13px] font-medium tracking-wide text-[#e5e7eb] truncate">
+            <span
+              className={`w-2 h-2 inline-block shrink-0 ${
+                wireframeMode
+                  ? 'border border-[#00d4ff] bg-transparent shadow-[0_0_6px_#00d4ff]'
+                  : 'bg-[#00d4ff] rotate-45 shadow-[0_0_8px_#00d4ff]'
+              }`}
+            />
+            <h2
+              className={`text-[13px] font-medium tracking-wide truncate ${
+                wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
+              }`}
+            >
               全局态势概览{' '}
-              <span className="text-[11px] font-normal text-[#9ca3af]">
+              <span
+                className={`text-[11px] font-normal ${
+                  wireframeMode ? 'text-[#00d4ff]/80 font-hud-mono' : 'text-[#9ca3af]'
+                }`}
+              >
                 (Global Overview)
               </span>
             </h2>
           </div>
-          <ShieldCheck className="w-3.5 h-3.5 text-[#00d4ff]/70 shrink-0" />
+          <ShieldCheck className="w-3.5 h-3.5 text-[#00d4ff]/80 shrink-0" />
         </div>
 
         {/* 横向三列并排 */}
@@ -167,45 +187,56 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
           <div className="flex flex-col items-center justify-center">
             <div className="relative w-[72px] h-[72px] flex items-center justify-center">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 84 84">
-                <defs>
-                  <linearGradient
-                    id="globalProgressGrad"
-                    x1="0%"
-                    y1="0%"
-                    x2="100%"
-                    y2="100%"
-                  >
-                    <stop offset="0%" stopColor="#00d4ff" />
-                    <stop offset="100%" stopColor="#2563eb" />
-                  </linearGradient>
-                </defs>
+                {!wireframeMode && (
+                  <defs>
+                    <linearGradient
+                      id="globalProgressGrad"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop offset="0%" stopColor="#00d4ff" />
+                      <stop offset="100%" stopColor="#2563eb" />
+                    </linearGradient>
+                  </defs>
+                )}
                 <circle
                   cx="42"
                   cy="42"
                   r={radius}
                   fill="none"
-                  stroke="rgba(148, 163, 184, 0.16)"
-                  strokeWidth="6"
+                  stroke={
+                    wireframeMode
+                      ? 'rgba(0, 212, 255, 0.22)'
+                      : 'rgba(148, 163, 184, 0.16)'
+                  }
+                  strokeWidth={wireframeMode ? '1' : '6'}
+                  strokeDasharray={wireframeMode ? '3 3' : undefined}
                 />
                 <circle
                   cx="42"
                   cy="42"
                   r={radius}
                   fill="none"
-                  stroke="url(#globalProgressGrad)"
-                  strokeWidth="6"
-                  strokeLinecap="round"
+                  stroke={wireframeMode ? '#00d4ff' : 'url(#globalProgressGrad)'}
+                  strokeWidth={wireframeMode ? '1.5' : '6'}
+                  strokeLinecap={wireframeMode ? 'butt' : 'round'}
                   strokeDasharray={circumference}
                   strokeDashoffset={strokeDashoffset}
                   style={{
-                    filter: 'drop-shadow(0 0 6px rgba(0, 212, 255, 0.55))',
+                    filter: wireframeMode
+                      ? 'drop-shadow(0 0 6px #00d4ff)'
+                      : 'drop-shadow(0 0 6px rgba(0, 212, 255, 0.55))',
                     transition: 'stroke-dashoffset 0.3s ease-out',
                   }}
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span
-                  className={`font-tech-num text-lg font-bold leading-none transition-colors duration-300 ${
+                  className={`${
+                    wireframeMode ? 'font-hud-mono' : 'font-tech-num'
+                  } text-lg font-bold leading-none transition-colors duration-300 ${
                     flashSolve ? 'text-white' : 'text-[#00d4ff]'
                   }`}
                 >
@@ -213,95 +244,155 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                 </span>
               </div>
             </div>
-            <span className="mt-1 text-xs text-[#9ca3af] whitespace-nowrap">
+            <span
+              className={`mt-1 text-xs whitespace-nowrap ${
+                wireframeMode ? 'text-white' : 'text-[#9ca3af]'
+              }`}
+            >
               总解题进度
             </span>
           </div>
 
-          {/* 第 2 列：总提交次数 + 微弱趋势波浪线 */}
-          <div className="flex flex-col items-center justify-center border-x border-[#00d4ff]/10 px-1">
+          {/* 第 2 列：总提交次数 + 趋势线 */}
+          <div
+            className={`flex flex-col items-center justify-center border-x px-1 ${
+              wireframeMode ? 'border-[#00d4ff]/25' : 'border-[#00d4ff]/10'
+            }`}
+          >
             <span
-              className={`font-tech-num text-xl xl:text-[23px] font-bold leading-tight transition-colors duration-300 ${
+              className={`${
+                wireframeMode ? 'font-hud-mono' : 'font-tech-num'
+              } text-xl xl:text-[23px] font-bold leading-tight transition-colors duration-300 ${
                 flashSubs ? 'text-white' : 'text-[#00d4ff]'
               }`}
               style={{
                 textShadow: flashSubs
                   ? '0 0 12px rgba(255,255,255,0.85)'
-                  : '0 0 10px rgba(0,212,255,0.28)',
+                  : '0 0 10px rgba(0,212,255,0.35)',
               }}
             >
               {Math.round(animSubs).toLocaleString()}
             </span>
             <svg
-              className="w-20 h-4 mt-1 opacity-55"
+              className={`w-20 h-4 mt-1 ${wireframeMode ? 'opacity-90' : 'opacity-55'}`}
               viewBox="0 0 80 16"
               fill="none"
               aria-hidden="true"
             >
-              <defs>
-                <linearGradient id="sparkWave" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#00d4ff" stopOpacity="0.15" />
-                  <stop offset="65%" stopColor="#00d4ff" stopOpacity="0.85" />
-                  <stop offset="100%" stopColor="#00ff88" stopOpacity="0.95" />
-                </linearGradient>
-              </defs>
+              {!wireframeMode && (
+                <defs>
+                  <linearGradient id="sparkWave" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#00d4ff" stopOpacity="0.15" />
+                    <stop offset="65%" stopColor="#00d4ff" stopOpacity="0.85" />
+                    <stop offset="100%" stopColor="#00ff88" stopOpacity="0.95" />
+                  </linearGradient>
+                </defs>
+              )}
               <path
-                d="M2 12 C 12 12, 16 6, 24 8 C 32 10, 36 4, 44 6 C 52 8, 56 3, 64 5 C 70 6, 74 2, 78 3"
-                stroke="url(#sparkWave)"
-                strokeWidth="1.5"
+                d={
+                  wireframeMode
+                    ? 'M2 13 L 14 11 L 24 7 L 34 9 L 46 5 L 58 7 L 68 3 L 78 2'
+                    : 'M2 12 C 12 12, 16 6, 24 8 C 32 10, 36 4, 44 6 C 52 8, 56 3, 64 5 C 70 6, 74 2, 78 3'
+                }
+                stroke={wireframeMode ? '#00d4ff' : 'url(#sparkWave)'}
+                strokeWidth={wireframeMode ? '1' : '1.5'}
                 strokeLinecap="round"
               />
             </svg>
-            <span className="mt-1 text-xs text-[#9ca3af] whitespace-nowrap">
+            <span
+              className={`mt-1 text-xs whitespace-nowrap ${
+                wireframeMode ? 'text-white' : 'text-[#9ca3af]'
+              }`}
+            >
               总提交次数
             </span>
           </div>
 
-          {/* 第 3 列：总正确率 + 绿色向上小箭头 */}
+          {/* 第 3 列：总正确率 */}
           <div className="flex flex-col items-center justify-center pl-1">
             <div className="flex items-center gap-1">
               <span
-                className={`font-tech-num text-xl xl:text-[23px] font-bold leading-tight transition-colors duration-300 ${
+                className={`${
+                  wireframeMode ? 'font-hud-mono' : 'font-tech-num'
+                } text-xl xl:text-[23px] font-bold leading-tight transition-colors duration-300 ${
                   flashAcc ? 'text-white' : 'text-[#00d4ff]'
                 }`}
                 style={{
                   textShadow: flashAcc
                     ? '0 0 12px rgba(255,255,255,0.85)'
-                    : '0 0 10px rgba(0,212,255,0.28)',
+                    : '0 0 10px rgba(0,212,255,0.35)',
                 }}
               >
                 {animAcc.toFixed(1)}%
               </span>
-              <ArrowUp className="w-3.5 h-3.5 text-[#00ff88] stroke-[2.5]" />
+              <ArrowUp
+                className={`w-3.5 h-3.5 stroke-[2.2] ${
+                  wireframeMode ? 'text-[#00d4ff]' : 'text-[#00ff88]'
+                }`}
+              />
             </div>
-            <span className="mt-1.5 text-[10px] font-tech-num text-[#00ff88]/85 whitespace-nowrap">
+            <span
+              className={`mt-1.5 text-[10px] whitespace-nowrap ${
+                wireframeMode
+                  ? 'font-hud-mono text-[#00d4ff]'
+                  : 'font-tech-num text-[#00ff88]/85'
+              }`}
+            >
               +1.8% 实时均值
             </span>
-            <span className="mt-1 text-xs text-[#9ca3af] whitespace-nowrap">
+            <span
+              className={`mt-1 text-xs whitespace-nowrap ${
+                wireframeMode ? 'text-white' : 'text-[#9ca3af]'
+              }`}
+            >
               总正确率
             </span>
           </div>
         </div>
       </CyberPanel>
 
-      {/* 左侧面板 2：各方向题目解题进度 (Direction Progress) ~33% */}
-      <CyberPanel className="flex-[33] min-h-0" innerClassName="px-3.5 py-2.5">
-        <div className="flex items-center justify-between mb-1.5 shrink-0">
+      {/* 左侧面板 2：各方向题目解题进度 (Direction Progress) ~34% */}
+      <CyberPanel
+        wireframeMode={wireframeMode}
+        className="flex-[34] min-h-[212px]"
+        innerClassName="px-3 py-2.5"
+      >
+        <div className="flex items-center justify-between gap-2 mb-1.5 shrink-0 flex-nowrap">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="w-2 h-2 bg-[#00d4ff] inline-block shrink-0 shadow-[0_0_8px_#00d4ff]" />
-            <h2 className="text-[13px] font-medium tracking-wide text-[#e5e7eb] truncate">
-              各方向题目解题进度{' '}
-              <span className="text-[11px] font-normal text-[#9ca3af]">
+            <span
+              className={`w-2 h-2 inline-block shrink-0 ${
+                wireframeMode
+                  ? 'border border-[#00d4ff] bg-transparent shadow-[0_0_6px_#00d4ff]'
+                  : 'bg-[#00d4ff] shadow-[0_0_8px_#00d4ff]'
+              }`}
+            />
+            <h2
+              className={`text-[13px] font-medium tracking-wide whitespace-nowrap truncate ${
+                wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
+              }`}
+            >
+              各方向题目解题进度
+              <span
+                className={`hidden 2xl:inline text-[11px] font-normal ml-1 ${
+                  wireframeMode ? 'text-[#00d4ff]/80 font-hud-mono' : 'text-[#9ca3af]'
+                }`}
+              >
                 (Direction)
               </span>
             </h2>
           </div>
-          <span className="text-[11px] font-tech-num text-[#9ca3af] shrink-0">
+          <span
+            className={`text-[11px] whitespace-nowrap shrink-0 ${
+              wireframeMode
+                ? 'font-hud-mono text-[#00d4ff]'
+                : 'font-tech-num text-[#9ca3af]'
+            }`}
+          >
             7 大方向
           </span>
         </div>
 
-        <div className="flex-1 min-h-0 flex flex-col justify-between gap-1">
+        <div className="flex-1 min-h-0 flex flex-col justify-between gap-0.5">
           {directions.map((dir) => {
             const pct = Math.min(100, Math.round((dir.solved / dir.total) * 100));
             const isComplete = dir.solved >= dir.total;
@@ -312,8 +403,12 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                 key={dir.zoneId}
                 type="button"
                 onClick={() => onFocusZone(dir.zoneId)}
-                className={`w-full flex items-center gap-2 px-1 py-1 rounded transition-colors cursor-pointer text-left ${
-                  isFocused
+                className={`w-full flex items-center flex-nowrap gap-2 px-1.5 py-0.5 rounded transition-colors cursor-pointer text-left ${
+                  wireframeMode
+                    ? isFocused
+                      ? 'border border-[#00d4ff]/70 bg-[#00d4ff]/10'
+                      : 'border border-transparent hover:border-[#00d4ff]/35'
+                    : isFocused
                     ? 'bg-[#00d4ff]/12'
                     : 'hover:bg-white/[0.04]'
                 }`}
@@ -321,48 +416,82 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
               >
                 {/* 图标 + 名称 */}
                 <div
-                  className={`flex items-center gap-1.5 w-[88px] shrink-0 text-[11px] whitespace-nowrap ${
-                    isComplete ? 'text-[#00ff88] font-medium' : 'text-[#e5e7eb]'
+                  className={`flex items-center gap-1.5 w-[86px] xl:w-[92px] shrink-0 text-[11px] whitespace-nowrap ${
+                    wireframeMode
+                      ? 'text-white font-medium'
+                      : isComplete
+                      ? 'text-[#00ff88] font-medium'
+                      : 'text-[#e5e7eb]'
+                  }`}
+                >
+                  <span
+                    className={`shrink-0 ${
+                      wireframeMode
+                        ? 'text-[#00d4ff]'
+                        : isComplete
+                        ? 'text-[#00ff88]'
+                        : 'text-[#00d4ff]'
+                    }`}
+                  >
+                    {ZONE_ICONS[dir.zoneId]}
+                  </span>
+                  <span className="whitespace-nowrap">{dir.name}</span>
+                </div>
+
+                {/* 进度条：0.1版为极细单色发光线条槽；0.2版保持网格点阵+渐变 */}
+                {wireframeMode ? (
+                  <div className="flex-1 min-w-[52px] h-[5px] bg-transparent relative border border-[#00d4ff]/45 flex items-center">
+                    <div
+                      className="h-full transition-all duration-500 ease-out"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: '#00d4ff',
+                        boxShadow: '0 0 8px #00d4ff',
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1 min-w-[52px] h-2.5 rounded-sm overflow-hidden progress-grid-dots relative border border-slate-700/50">
+                    <div
+                      className={`h-full rounded-sm transition-all duration-500 ease-out ${
+                        isComplete ? 'animate-bar-complete' : ''
+                      }`}
+                      style={{
+                        width: `${pct}%`,
+                        background: isComplete
+                          ? 'linear-gradient(90deg, #059669 0%, #00ff88 100%)'
+                          : 'linear-gradient(90deg, #0284c7 0%, #00d4ff 100%)',
+                        boxShadow: isComplete
+                          ? '0 0 10px rgba(0, 255, 136, 0.55)'
+                          : '0 0 8px rgba(0, 212, 255, 0.35)',
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* 右侧数值 [ 35 / 50 ] */}
+                <div
+                  className={`min-w-[54px] shrink-0 text-right text-[11px] whitespace-nowrap tabular-nums ${
+                    wireframeMode
+                      ? 'font-hud-mono text-[#00d4ff]'
+                      : isComplete
+                      ? 'font-tech-num text-[#00ff88] font-bold'
+                      : 'font-tech-num text-[#9ca3af]'
                   }`}
                 >
                   <span
                     className={
-                      isComplete ? 'text-[#00ff88]' : 'text-[#00d4ff]'
+                      wireframeMode
+                        ? 'text-white font-bold'
+                        : isComplete
+                        ? 'text-[#00ff88]'
+                        : 'text-[#e5e7eb]'
                     }
                   >
-                    {ZONE_ICONS[dir.zoneId]}
-                  </span>
-                  <span className="truncate">{dir.name}</span>
-                </div>
-
-                {/* 进度条：未满部分显示网格点阵，前景青色渐变 */}
-                <div className="flex-1 h-2.5 rounded-sm overflow-hidden progress-grid-dots relative border border-slate-700/50">
-                  <div
-                    className={`h-full rounded-sm transition-all duration-500 ease-out ${
-                      isComplete ? 'animate-bar-complete' : ''
-                    }`}
-                    style={{
-                      width: `${pct}%`,
-                      background: isComplete
-                        ? 'linear-gradient(90deg, #059669 0%, #00ff88 100%)'
-                        : 'linear-gradient(90deg, #0284c7 0%, #00d4ff 100%)',
-                      boxShadow: isComplete
-                        ? '0 0 10px rgba(0, 255, 136, 0.55)'
-                        : '0 0 8px rgba(0, 212, 255, 0.35)',
-                    }}
-                  />
-                </div>
-
-                {/* 右侧数值 [ 35 / 50 ] */}
-                <div
-                  className={`w-[48px] shrink-0 text-right font-tech-num text-[11px] ${
-                    isComplete ? 'text-[#00ff88] font-bold' : 'text-[#9ca3af]'
-                  }`}
-                >
-                  <span className={isComplete ? 'text-[#00ff88]' : 'text-[#e5e7eb]'}>
                     {dir.solved}
-                  </span>{' '}
-                  / {dir.total}
+                  </span>
+                  <span className="mx-0.5 text-[#00d4ff]/70">/</span>
+                  <span>{dir.total}</span>
                 </div>
               </button>
             );
@@ -370,17 +499,32 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
         </div>
       </CyberPanel>
 
-      {/* 左侧面板 3：实时一血榜 (First Blood) Cover Flow 3D 卡片轮播 ~45% */}
+      {/* 左侧面板 3：实时一血榜 (First Blood) Cover Flow 3D 卡片轮播 ~44% */}
       <CyberPanel
-        className="flex-[45] min-h-[205px]"
-        innerClassName="px-3.5 py-2.5 justify-between"
+        wireframeMode={wireframeMode}
+        className="flex-[44] min-h-[205px]"
+        innerClassName="px-3 py-2.5 justify-between"
       >
         <div className="flex items-center justify-between shrink-0">
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 bg-[#ffd24a] rotate-45 inline-block shadow-[0_0_8px_#ffd24a]" />
-            <h2 className="text-[13px] font-medium tracking-wide text-[#e5e7eb]">
+            <span
+              className={`w-2 h-2 inline-block ${
+                wireframeMode
+                  ? 'border border-[#00d4ff] bg-transparent shadow-[0_0_6px_#00d4ff]'
+                  : 'bg-[#ffd24a] rotate-45 shadow-[0_0_8px_#ffd24a]'
+              }`}
+            />
+            <h2
+              className={`text-[13px] font-medium tracking-wide ${
+                wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
+              }`}
+            >
               实时一血榜{' '}
-              <span className="text-[11px] font-normal text-[#9ca3af]">
+              <span
+                className={`text-[11px] font-normal ${
+                  wireframeMode ? 'text-[#00d4ff]/80 font-hud-mono' : 'text-[#9ca3af]'
+                }`}
+              >
                 (First Blood)
               </span>
             </h2>
@@ -394,12 +538,22 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                   (prev) => (prev - 1 + firstBloods.length) % firstBloods.length
                 )
               }
-              className="p-1 text-[#9ca3af] hover:text-[#ffd24a] transition-colors cursor-pointer"
+              className={`p-1 transition-colors cursor-pointer ${
+                wireframeMode
+                  ? 'text-[#00d4ff]/80 hover:text-white'
+                  : 'text-[#9ca3af] hover:text-[#ffd24a]'
+              }`}
               aria-label="上一张一血卡片"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
-            <span className="font-tech-num text-[11px] text-[#9ca3af] px-1">
+            <span
+              className={`text-[11px] px-1 ${
+                wireframeMode
+                  ? 'font-hud-mono text-[#00d4ff]'
+                  : 'font-tech-num text-[#9ca3af]'
+              }`}
+            >
               {activeFbIndex + 1}/{firstBloods.length}
             </span>
             <button
@@ -407,7 +561,11 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
               onClick={() =>
                 setActiveFbIndex((prev) => (prev + 1) % firstBloods.length)
               }
-              className="p-1 text-[#9ca3af] hover:text-[#ffd24a] transition-colors cursor-pointer"
+              className={`p-1 transition-colors cursor-pointer ${
+                wireframeMode
+                  ? 'text-[#00d4ff]/80 hover:text-white'
+                  : 'text-[#9ca3af] hover:text-[#ffd24a]'
+              }`}
               aria-label="下一张一血卡片"
             >
               <ChevronRight className="w-3.5 h-3.5" />
@@ -415,7 +573,7 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
           </div>
         </div>
 
-        {/* Cover Flow 卡片舞台（前后景深缩放，无 3D 斜面穿模） */}
+        {/* Cover Flow 卡片舞台 */}
         <div
           className="relative flex-1 min-h-0 flex items-center justify-center overflow-hidden my-1"
           onMouseEnter={() => setCarouselPaused(true)}
@@ -430,30 +588,40 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
             const isVisible = Math.abs(offset) <= 1;
             const translateX = offset * 96;
             const scale = offset === 0 ? 1 : 0.78;
-            const opacity = offset === 0 ? 1 : isVisible ? 0.58 : 0;
+            const opacity = isVisible
+              ? wireframeMode
+                ? offset === 0
+                  ? 1
+                  : 0.16
+                : 1
+              : 0;
+            const brightness = offset === 0 ? 1 : 0.55;
             const zIndex = offset === 0 ? 30 : isVisible ? 10 : 0;
 
             return (
               <div
                 key={fb.id}
                 onClick={() => setActiveFbIndex(idx)}
-                className="absolute left-1/2 top-1/2 w-[212px] xl:w-[234px] h-[162px] transition-[transform,opacity] duration-500 ease-out cursor-pointer"
+                className="absolute left-1/2 top-1/2 w-[206px] xl:w-[220px] 2xl:w-[228px] h-[160px] 2xl:h-[176px] transition-[transform,opacity,filter] duration-500 ease-out cursor-pointer"
                 style={{
                   transform: `translate(calc(-50% + ${translateX}px), -50%) scale(${scale})`,
                   opacity,
+                  filter: `brightness(${brightness})`,
                   zIndex,
                   pointerEvents: isVisible ? 'auto' : 'none',
                 }}
               >
                 <CyberPanel
                   variant="gold"
-                  className="w-full h-full shadow-[0_10px_28px_rgba(0,0,0,0.55)]"
+                  wireframeMode={wireframeMode}
+                  className={`w-full h-full ${
+                    wireframeMode ? '' : 'shadow-[0_10px_28px_rgba(0,0,0,0.55)]'
+                  }`}
                   innerClassName="p-3.5 justify-between"
                 >
                   {/* 顶部：六边形发光头像 + 一血荣誉标签 */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="relative w-11 h-11 flex items-center justify-center shrink-0">
-                      {/* 六边形金色发光外框 */}
                       <svg
                         className="absolute inset-0 w-full h-full"
                         viewBox="0 0 44 44"
@@ -462,22 +630,36 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                       >
                         <polygon
                           points="22,2 40,12 40,32 22,42 4,32 4,12"
-                          stroke="#ffd24a"
-                          strokeWidth="1.6"
-                          fill="rgba(255,210,74,0.12)"
+                          stroke={wireframeMode ? '#00d4ff' : '#ffd24a'}
+                          strokeWidth={wireframeMode ? '1' : '1.6'}
+                          fill={
+                            wireframeMode
+                              ? 'rgba(0,0,0,0)'
+                              : 'rgba(255,210,74,0.12)'
+                          }
                         />
                       </svg>
                       <div
-                        className="w-8 h-8 clip-hex-avatar flex items-center justify-center font-bold text-sm text-white"
+                        className={`w-8 h-8 clip-hex-avatar flex items-center justify-center font-bold text-sm text-white ${
+                          wireframeMode ? 'border border-[#00d4ff]/50' : ''
+                        }`}
                         style={{
-                          background: `linear-gradient(135deg, ${fb.teamColor}cc, rgba(10,14,23,0.9))`,
+                          background: wireframeMode
+                            ? 'transparent'
+                            : `linear-gradient(135deg, ${fb.teamColor}cc, rgba(10,14,23,0.9))`,
                         }}
                       >
                         {fb.teamName.slice(0, 1)}
                       </div>
                     </div>
 
-                    <span className="font-tech-num text-[11px] tracking-wider text-[#ffd24a] font-semibold">
+                    <span
+                      className={`text-[11px] tracking-wider font-semibold ${
+                        wireframeMode
+                          ? 'font-hud-mono text-[#00d4ff]'
+                          : 'font-tech-num text-[#ffd24a]'
+                      }`}
+                    >
                       FIRST BLOOD
                     </span>
                   </div>
@@ -487,13 +669,21 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                     <div className="text-lg font-bold text-white tracking-wide truncate">
                       {fb.teamName}
                     </div>
-                    <div className="mt-1 text-xs text-[#e5e7eb] leading-snug">
+                    <div
+                      className={`mt-1 text-xs leading-snug ${
+                        wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
+                      }`}
+                    >
                       斩获{' '}
                       <span className="text-[#00d4ff] font-medium">
                         [{fb.zoneName}]
                       </span>{' '}
                       -{' '}
-                      <span className="text-[#00ff88] font-medium">
+                      <span
+                        className={`font-medium ${
+                          wireframeMode ? 'text-white' : 'text-[#00ff88]'
+                        }`}
+                      >
                         [{fb.challengeName}]
                       </span>{' '}
                       一血
@@ -501,11 +691,31 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                   </div>
 
                   {/* 右下角：时间点 + 排名 */}
-                  <div className="flex items-center justify-between pt-1 border-t border-[#ffd24a]/15">
-                    <span className="text-[11px] text-[#9ca3af]">首破时刻</span>
-                    <div className="flex items-center gap-2 font-tech-num text-xs">
-                      <span className="text-[#e5e7eb]">{fb.timestamp}</span>
-                      <span className="text-[#ffd24a] font-bold">
+                  <div
+                    className={`flex items-center justify-between pt-1 border-t ${
+                      wireframeMode
+                        ? 'border-dashed border-[#00d4ff]/35'
+                        : 'border-[#ffd24a]/15'
+                    }`}
+                  >
+                    <span
+                      className={`text-[11px] ${
+                        wireframeMode ? 'text-white/80' : 'text-[#9ca3af]'
+                      }`}
+                    >
+                      首破时刻
+                    </span>
+                    <div
+                      className={`flex items-center gap-2 text-xs ${
+                        wireframeMode ? 'font-hud-mono' : 'font-tech-num'
+                      }`}
+                    >
+                      <span className="text-white">{fb.timestamp}</span>
+                      <span
+                        className={`font-bold ${
+                          wireframeMode ? 'text-[#00d4ff]' : 'text-[#ffd24a]'
+                        }`}
+                      >
                         #{fb.rankIndex}
                       </span>
                     </div>
@@ -523,10 +733,14 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
               key={fb.id}
               type="button"
               onClick={() => setActiveFbIndex(idx)}
-              className={`h-1 rounded-full transition-all cursor-pointer ${
+              className={`h-[2px] transition-all cursor-pointer ${
                 idx === activeFbIndex
-                  ? 'w-5 bg-[#ffd24a] shadow-[0_0_6px_#ffd24a]'
-                  : 'w-2 bg-slate-600/70 hover:bg-slate-400'
+                  ? wireframeMode
+                    ? 'w-5 bg-[#00d4ff] shadow-[0_0_6px_#00d4ff]'
+                    : 'w-5 h-1 rounded-full bg-[#ffd24a] shadow-[0_0_6px_#ffd24a]'
+                  : wireframeMode
+                  ? 'w-2 bg-[#00d4ff]/30 hover:bg-[#00d4ff]/60'
+                  : 'w-2 h-1 rounded-full bg-slate-600/70 hover:bg-slate-400'
               }`}
               aria-label={`切换到第 ${idx + 1} 张一血卡片`}
             />

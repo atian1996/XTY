@@ -21,20 +21,18 @@ export const skyDomeFragmentShader = /* glsl */ `
     vec3 dir = normalize(vWorldPos);
     float elev = clamp(dir.y, -0.35, 1.0);
 
-    // Deep Midnight Blue Sky & Cinematic Volumetric Moisture Mist (zero light pollution)
-    vec3 nadirCol   = vec3(0.008, 0.020, 0.052);
-    vec3 horizonCol = vec3(0.036, 0.096, 0.210);
-    vec3 zenithCol  = vec3(0.005, 0.014, 0.040);
+    // Match scene.background & FogExp2(0x020408, 0.005) seamlessly in linear space
+    vec3 nadirCol   = vec3(0.0006, 0.0012, 0.0024);
+    vec3 horizonCol = vec3(0.0028, 0.0055, 0.0115);
+    vec3 zenithCol  = vec3(0.0006, 0.0012, 0.0026);
 
     vec3 col = elev >= 0.0
-      ? mix(horizonCol, zenithCol, pow(elev, 0.56))
+      ? mix(horizonCol, zenithCol, pow(elev, 0.65))
       : mix(horizonCol, nadirCol, clamp(-elev * 3.0, 0.0, 1.0));
 
-    // Soft, moist cinematic volumetric horizon mist (adds depth and moisture without white glare)
+    // Ultra-subtle obsidian-blue horizon transition without washing far platforms in blue
     float horizonGlow = exp(-abs(dir.y) * 9.0);
-    float moistureBand = exp(-abs(dir.y - 0.025) * 4.6);
-    col += vec3(0.032, 0.112, 0.228) * horizonGlow * 0.30;
-    col += vec3(0.024, 0.094, 0.195) * moistureBand * 0.26;
+    col += vec3(0.003, 0.010, 0.024) * horizonGlow * 0.35;
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -122,6 +120,7 @@ export const groundDiscFragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uDarkMode;
   uniform float uFuturisticMode;
+  uniform float uWireframeMode;
   varying vec2 vPos;
 
   float hexDist(vec2 p) {
@@ -171,21 +170,30 @@ export const groundDiscFragmentShader = /* glsl */ `
     // Subtle wet mirror ripple modulation for deep glass moisture feel
     float wetSheen = 0.92 + 0.08 * sin(dist * 1.35 - uTime * 0.45);
 
-    // Deep midnight-blue wet mirror glass base + soft wet reflections of equipment & plasma core above
-    vec3 baseCol = vec3(0.006, 0.016, 0.042)
-                 + vec3(0.026, 0.078, 0.148) * (centerConsoleRefl * 0.48 + ringPlatformsRefl * 0.55) * wetSheen
-                 + vec3(0.065, 0.145, 0.235) * rackSpecRefl * 0.42
-                 + vec3(0.0, 0.22, 0.34) * pipelineRefl * 0.36
-                 + vec3(0.34, 0.075, 0.020) * centerPlasmaRefl * 0.46;
+    // Deep obsidian mirror glass base (#020408) + restrained reflections of equipment & plasma core above
+    vec3 baseCol = vec3(0.0014, 0.0026, 0.0056)
+                 + vec3(0.012, 0.036, 0.068) * (centerConsoleRefl * 0.38 + ringPlatformsRefl * 0.40) * wetSheen
+                 + vec3(0.025, 0.058, 0.098) * rackSpecRefl * 0.28
+                 + vec3(0.0, 0.12, 0.20) * pipelineRefl * 0.32
+                 + vec3(0.36, 0.085, 0.015) * centerPlasmaRefl * 0.48;
 
-    vec3 lineCol = vec3(0.0, 0.78, 1.0);
-    float combinedGrid = hexLineMajor * 0.19 + hexGlowMajor * 0.14 + hexLineMinor * 0.042;
+    vec3 lineCol = vec3(0.0, 0.78, 0.96);
+    float combinedGrid = hexLineMajor * 0.22 + hexGlowMajor * 0.12 + hexLineMinor * 0.04;
 
-    vec3 col = baseCol + lineCol * (combinedGrid + axisLine * 0.025 + (ring1 + ring2 + ring3) * 0.10);
+    vec3 col = baseCol + lineCol * (combinedGrid + axisLine * 0.02 + (ring1 + ring2 + ring3) * 0.13);
     // Semi-transparent dark mirror glass so real planar Reflector reflections blend with wet depth
-    float alpha = radialFade * (0.46 + combinedGrid * 0.42 + ringPlatformsRefl * 0.12);
+    float alpha = radialFade * (0.48 + combinedGrid * 0.44 + ringPlatformsRefl * 0.12);
+    vec4 v02Out = vec4(col, clamp(alpha, 0.0, 0.92));
 
-    gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.92));
+    // 0.1版 (赛博线框风)：暗蓝黑基底 (0x020610) + 暗青色 (0x003355) 若隐若现的不发光六边形地面网格
+    vec3 tronBaseCol = vec3(0.001, 0.003, 0.008);
+    vec3 tronHexColor = vec3(0.0, 0.20, 0.333); // 0x003355 (远低于 Bloom 阈值 0.6，绝不泛光)
+    float tronHexPattern = hexLineMajor * 0.65 + hexLineMinor * 0.22;
+    vec3 tronCol = tronBaseCol + tronHexColor * tronHexPattern;
+    float tronAlpha = radialFade * (0.42 + tronHexPattern * 0.48);
+    vec4 v01Out = vec4(tronCol, clamp(tronAlpha, 0.0, 0.88));
+
+    gl_FragColor = mix(v02Out, v01Out, clamp(uWireframeMode, 0.0, 1.0));
   }
 `;
 
@@ -258,32 +266,32 @@ export const zonePlatformFragmentShader = /* glsl */ `
     float mountRing = (1.0 - smoothstep(0.0, 0.018, mountDist)) + exp(-mountDist * 16.0) * 0.18;
 
     float outlineDist = abs(hexRadius - 3.82);
-    float thinHexCore = 1.0 - smoothstep(0.0, 0.018, outlineDist);
-    float softMoistAura = exp(-outlineDist * 10.5) * 0.52 + exp(-outlineDist * 3.5) * 0.16;
-    float thinHexOutline = thinHexCore * 0.86 + softMoistAura;
+    float thinHexCore = 1.0 - smoothstep(0.0, 0.014, outlineDist);
+    float softMoistAura = exp(-outlineDist * 14.0) * 0.32 + exp(-outlineDist * 5.0) * 0.08;
+    float thinHexOutline = thinHexCore * 0.95 + softMoistAura;
 
     // 3) 径向微光呼吸波
     float scan = fract((uTime + uPhase) * 0.22 - d * 0.16);
-    float wave = smoothstep(0.92, 0.99, scan) * 0.22;
+    float wave = smoothstep(0.93, 0.99, scan) * 0.16;
 
     // 4) 中心光泽与金属倒角柔润高光
-    float core = (1.0 - smoothstep(0.0, 3.2, d)) * 0.22;
-    float rimSpec = smoothstep(3.58, 3.85, hexRadius) * 0.36;
+    float core = (1.0 - smoothstep(0.0, 3.2, d)) * 0.08;
+    float rimSpec = smoothstep(3.58, 3.85, hexRadius) * 0.12;
     float edgeFade = 1.0 - smoothstep(4.02, 4.45, d);
 
-    // Gunmetal & dark matte alloy deck base (NOT pure black)
-    vec3 deckBase = vec3(0.145, 0.192, 0.262);
+    // Semi-transparent interior so real directional shadows cast onto hexMesh show clearly; crisp cyan outline blooms at 0.6
+    vec3 deckBase = vec3(0.015, 0.024, 0.036);
 
     float lineBoost = gridLine * 0.14
-                    + mountRing * 0.24
-                    + thinHexOutline * 0.90
-                    + rimSpec
-                    + wave * 0.32
-                    + core * 0.20;
+                    + mountRing * 0.38
+                    + thinHexOutline * 1.35
+                    + rimSpec * 0.14
+                    + wave * 0.28
+                    + core * 0.05;
 
     vec3 col = deckBase + uColor * lineBoost;
-    float a = (0.95 + gridLine * 0.10 + thinHexOutline * 0.38) * edgeFade;
-    gl_FragColor = vec4(col, clamp(a, 0.0, 0.98));
+    float a = (0.14 + gridLine * 0.28 + mountRing * 0.45 + thinHexOutline * 0.85) * edgeFade;
+    gl_FragColor = vec4(col, clamp(a, 0.0, 0.96));
   }
 `;
 
@@ -305,17 +313,19 @@ export const accessPipeFragmentShader = /* glsl */ `
   varying vec2 vUv;
 
   void main() {
-    float flow = fract(vUv.x * 6.0 - uTime * 1.15 * uDir);
-    float pulse = pow(1.0 - abs(flow * 2.0 - 1.0), 6.0);
-    float rim = pow(1.0 - abs(vUv.y - 0.5) * 2.0, 1.35);
-    vec3 col = uColor * (0.48 + pulse * 0.96);
-    float alpha = (0.34 + pulse * 0.52) * rim;
+    float flow1 = fract(vUv.x * 5.0 - uTime * 1.35 * uDir);
+    float pulse1 = pow(1.0 - abs(flow1 * 2.0 - 1.0), 5.0);
+    float flow2 = fract(vUv.x * 2.0 - uTime * 0.65 * uDir + 0.35);
+    float pulse2 = pow(1.0 - abs(flow2 * 2.0 - 1.0), 8.0);
+    float rim = pow(1.0 - abs(vUv.y - 0.5) * 2.0, 1.15);
+    vec3 col = uColor * (0.62 + pulse1 * 1.15 + pulse2 * 0.78) + vec3(0.28, 0.75, 0.95) * (pulse1 * 0.38);
+    float alpha = clamp((0.46 + pulse1 * 0.48 + pulse2 * 0.28) * rim, 0.0, 0.96);
     gl_FragColor = vec4(col, alpha);
   }
 `;
 
 /**
- * 5) 攻击光束 Attack Beam Shader（纤细锐利的红色激光束 Thin, sharp red laser beams）
+ * 5) 攻击光束 Attack Beam Shader（高亮核心激光束 + 外层体积光晕护套）
  */
 export const attackBeamVertexShader = /* glsl */ `
   varying vec2 vUv;
@@ -334,21 +344,71 @@ export const attackBeamFragmentShader = /* glsl */ `
   varying vec2 vUv;
 
   void main() {
-    float flow = fract(vUv.x * 8.0 - uTime * 3.2);
-    float pulse = pow(1.0 - abs(flow * 2.0 - 1.0), 6.0);
+    float flow1 = fract(vUv.x * 4.0 - uTime * 3.2);
+    float flow2 = fract(vUv.x * 9.0 - uTime * 5.0);
+    float pulse1 = pow(1.0 - abs(flow1 * 2.0 - 1.0), 2.8);
+    float pulse2 = pow(1.0 - abs(flow2 * 2.0 - 1.0), 5.0);
+    float pulse = pulse1 * 0.9 + pulse2 * 0.7;
 
-    float head = smoothstep(uProgress - 0.045, uProgress, vUv.x)
-               * (1.0 - smoothstep(uProgress, uProgress + 0.02, vUv.x));
+    float head = smoothstep(uProgress - 0.075, uProgress, vUv.x)
+               * (1.0 - smoothstep(uProgress, uProgress + 0.015, vUv.x));
 
     float grow = step(vUv.x, uProgress);
-    float rim = pow(1.0 - abs(vUv.y - 0.5) * 2.0, 1.65);
-    float coreLine = pow(1.0 - abs(vUv.y - 0.5) * 2.0, 5.0);
+    float rim = pow(1.0 - abs(vUv.y - 0.5) * 2.0, 1.05);
+    float coreLine = pow(1.0 - abs(vUv.y - 0.5) * 2.0, 2.8);
 
-    float a = grow * (0.48 + pulse * 0.48 + head * 0.85) * rim * uOpacity;
-    vec3 baseLaser = uColor * (0.82 + pulse * 0.78 + head * 1.45) * uIntensity;
-    vec3 innerHot = vec3(1.0, 0.58, 0.36) * coreLine * 0.55;
+    float a = grow * (0.88 + pulse * 0.35 + head * 0.95) * rim * uOpacity;
+    vec3 baseLaser = uColor * (1.35 + pulse * 1.15 + head * 1.85) * uIntensity;
+    vec3 hotTint = mix(uColor, vec3(1.0, 0.96, 0.88), 0.62);
+    vec3 innerHot = hotTint * (coreLine * (0.85 + pulse2 * 0.75) + head * 1.25);
 
-    gl_FragColor = vec4(baseLaser + innerHot, clamp(a, 0.0, 0.96));
+    gl_FragColor = vec4(baseLaser + innerHot, clamp(a, 0.0, 1.0));
+  }
+`;
+
+export const attackBeamHaloVertexShader = /* glsl */ `
+  varying vec2 vUv;
+  varying vec3 vNormalView;
+  varying vec3 vViewDir;
+  void main() {
+    vUv = uv;
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vNormalView = normalize(normalMatrix * normal);
+    vViewDir = normalize(-mvPos.xyz);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+
+export const attackBeamHaloFragmentShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uProgress;
+  uniform float uIntensity;
+  uniform float uOpacity;
+  uniform vec3 uColor;
+  varying vec2 vUv;
+  varying vec3 vNormalView;
+  varying vec3 vViewDir;
+
+  void main() {
+    float flow1 = fract(vUv.x * 4.0 - uTime * 3.2);
+    float flow2 = fract(vUv.x * 9.0 - uTime * 5.0);
+    float pulse = pow(1.0 - abs(flow1 * 2.0 - 1.0), 2.5) * 0.9
+                + pow(1.0 - abs(flow2 * 2.0 - 1.0), 4.5) * 0.6;
+
+    float head = smoothstep(uProgress - 0.085, uProgress, vUv.x)
+               * (1.0 - smoothstep(uProgress, uProgress + 0.015, vUv.x));
+
+    float grow = step(vUv.x, uProgress);
+    // Volumetric cylindrical falloff: brightest along centerline, smooth zero at outer cylinder edge
+    float facing = max(dot(normalize(vNormalView), normalize(vViewDir)), 0.0);
+    float haloProfile = pow(facing, 1.85);
+
+    float a = grow * haloProfile * (0.58 + pulse * 0.42 + head * 0.75) * uOpacity;
+    vec3 brightTint = clamp(uColor * 1.3 + vec3(0.25), 0.0, 1.0);
+    vec3 glowCol = mix(uColor, brightTint, pulse * 0.38 + head * 0.52)
+                 * (1.15 + pulse * 0.95 + head * 1.45) * uIntensity;
+
+    gl_FragColor = vec4(glowCol, clamp(a, 0.0, 0.92));
   }
 `;
 
@@ -424,8 +484,8 @@ export const VignetteChromaticShader = {
       vec3 col = texture2D(tDiffuse, uv).rgb;
 
       // 保持充足曝光与通透对比度，仅在四角做极轻微的摄影级收敛
-      float vig = 1.0 - smoothstep(0.48, 1.04, d);
-      col *= mix(0.86, 1.0, vig);
+      float vig = 1.0 - smoothstep(0.50, 1.08, d);
+      col *= mix(0.90, 1.0, vig);
 
       gl_FragColor = vec4(col, 1.0);
     }

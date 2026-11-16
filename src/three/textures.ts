@@ -1375,27 +1375,27 @@ export function createV03BrushedMetalTexture(maxAnisotropy = 4): THREE.CanvasTex
   canvas.height = 512;
   const ctx = canvas.getContext('2d')!;
 
-  // 枪铁灰与炭灰金属基底 (Gunmetal Grey #4c5d73 & Charcoal Grey #374457, NOT pure black)
+  // 高明度中性拉丝细节基底（配合 PBR color: 0x6a7a8c 使用，保留清晰拉丝质感而不压黑底色）
   const grad = ctx.createLinearGradient(0, 0, 512, 512);
-  grad.addColorStop(0, '#4f6078');
-  grad.addColorStop(0.5, '#647892');
-  grad.addColorStop(1, '#3b495e');
+  grad.addColorStop(0, '#e0e4e8');
+  grad.addColorStop(0.5, '#f6f8fa');
+  grad.addColorStop(1, '#cfd4da');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 512, 512);
 
   // 高密度水平金属拉丝纹理 (Visible brushed metal striations)
   for (let y = 0; y < 512; y += 2) {
-    const alpha = 0.05 + ((y * 19) % 13) * 0.008;
-    ctx.fillStyle = y % 4 === 0 ? `rgba(226, 232, 240, ${alpha})` : `rgba(15, 23, 42, ${alpha})`;
+    const alpha = 0.05 + ((y * 19) % 13) * 0.007;
+    ctx.fillStyle = y % 4 === 0 ? `rgba(255, 255, 255, ${alpha})` : `rgba(40, 48, 56, ${alpha})`;
     ctx.fillRect(0, 0 + y, 512, 1);
   }
 
   // 模块化装甲面板接缝 (Crisp Panel Seams with recessed groove + bright specular bevel lip)
   const drawPanelSeamRect = (x: number, y: number, w: number, h: number) => {
-    ctx.strokeStyle = 'rgba(15, 23, 42, 0.72)';
+    ctx.strokeStyle = 'rgba(35, 42, 50, 0.65)';
     ctx.lineWidth = 2.5;
     ctx.strokeRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(203, 213, 225, 0.38)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.lineWidth = 1.2;
     ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
   };
@@ -1404,10 +1404,10 @@ export function createV03BrushedMetalTexture(maxAnisotropy = 4): THREE.CanvasTex
   drawPanelSeamRect(28, 28, 456, 214);
   drawPanelSeamRect(28, 268, 456, 214);
 
-  // 竖向中缝接缝线与四角内六角紧固铆钉 (Vertical panel seam & hex fasteners)
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.68)';
+  // 竖向中缝接缝线
+  ctx.fillStyle = 'rgba(35, 42, 50, 0.60)';
   ctx.fillRect(254, 28, 3, 454);
-  ctx.fillStyle = 'rgba(203, 213, 225, 0.35)';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
   ctx.fillRect(257, 28, 1.5, 454);
 
   // 上下两组真实工业百叶散热孔阵列 (Realistic Louvered Cooling Vents)
@@ -1420,11 +1420,9 @@ export function createV03BrushedMetalTexture(maxAnisotropy = 4): THREE.CanvasTex
       for (let c = 0; c < cols; c++) {
         const vx = startX + c * (slotW + gapX);
         const vy = startY + r * gapY;
-        // 散热孔深腔阴影
-        ctx.fillStyle = '#1b2636';
+        ctx.fillStyle = '#4a525c';
         ctx.fillRect(vx, vy, slotW, slotH);
-        // 散热百叶倒角高光亮边
-        ctx.fillStyle = '#9bb0cc';
+        ctx.fillStyle = '#ffffff';
         ctx.fillRect(vx, vy + slotH - 1.8, slotW, 1.8);
       }
     }
@@ -1443,7 +1441,7 @@ export function createV03BrushedMetalTexture(maxAnisotropy = 4): THREE.CanvasTex
 }
 
 /**
- * 10c) v0.3 专属：炭灰拉丝与精细工业织物复合装甲纹理 (256×256, Charcoal Grey Brushed Metal & Panel Seams, NOT pure black)
+ * 10c) v0.3 专属：高明度精密编织细节纹理 (256×256)
  */
 export function createV03CarbonFiberTexture(maxAnisotropy = 4): THREE.CanvasTexture {
   if (_cachedV03CarbonFiberTex) return _cachedV03CarbonFiberTex;
@@ -1453,7 +1451,7 @@ export function createV03CarbonFiberTexture(maxAnisotropy = 4): THREE.CanvasText
   canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = '#2d394b';
+  ctx.fillStyle = '#c4c9cf';
   ctx.fillRect(0, 0, 256, 256);
 
   const step = 8;
@@ -1461,22 +1459,21 @@ export function createV03CarbonFiberTexture(maxAnisotropy = 4): THREE.CanvasText
     for (let x = 0; x < 256; x += step) {
       const diag = ((x + y) / step) % 4;
       if (diag === 0 || diag === 1) {
-        ctx.fillStyle = diag === 0 ? '#4a5c74' : '#3d4d63';
+        ctx.fillStyle = diag === 0 ? '#e4e8ec' : '#d6dbe0';
       } else {
-        ctx.fillStyle = diag === 2 ? '#243040' : '#313f54';
+        ctx.fillStyle = diag === 2 ? '#b2b8bf' : '#c6cbd1';
       }
       ctx.fillRect(x, y, step - 1, step - 1);
 
-      ctx.fillStyle = 'rgba(203, 213, 225, 0.14)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';
       ctx.fillRect(x + 1, y + 1, step - 3, 2);
     }
   }
 
-  // 清晰的炭灰装甲板接缝线 (Panel seams)
-  ctx.strokeStyle = 'rgba(15, 23, 42, 0.65)';
+  ctx.strokeStyle = 'rgba(40, 46, 54, 0.60)';
   ctx.lineWidth = 2;
   ctx.strokeRect(4, 4, 248, 248);
-  ctx.strokeStyle = 'rgba(186, 210, 235, 0.25)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
   ctx.lineWidth = 1;
   ctx.strokeRect(6, 6, 244, 244);
 
@@ -1503,95 +1500,89 @@ export function createV03RackFrontTexture(maxAnisotropy = 4): THREE.CanvasTextur
   canvas.height = 512;
   const ctx = canvas.getContext('2d')!;
 
-  // 炭灰拉丝金属底材 (Charcoal grey brushed metal base, NOT pure black)
-  ctx.fillStyle = '#243040';
+  // 高明度机柜前脸细节贴图（与 color: 0x6a7a8c 乘法叠加后精确还原冷灰蓝金属质感）
+  ctx.fillStyle = '#b4bac0';
   ctx.fillRect(0, 0, 512, 512);
 
-  // 两侧枪铁灰拉丝机架立柱 (Gunmetal grey metallic rails)
+  // 两侧高光拉丝机架立柱
   const railGrad = ctx.createLinearGradient(0, 0, 32, 0);
-  railGrad.addColorStop(0, '#5a6e87');
-  railGrad.addColorStop(0.5, '#7e95b2');
-  railGrad.addColorStop(1, '#415268');
+  railGrad.addColorStop(0, '#dfe4ea');
+  railGrad.addColorStop(0.5, '#f6f8fa');
+  railGrad.addColorStop(1, '#c4cad0');
   ctx.fillStyle = railGrad;
   ctx.fillRect(0, 0, 30, 512);
   ctx.fillRect(482, 0, 30, 512);
 
-  // 精密方孔导轨与银色倒角内沿
+  // 精密方孔导轨与倒角亮边
   for (let y = 10; y < 512; y += 16) {
-    ctx.fillStyle = '#192330';
+    ctx.fillStyle = '#4a525c';
     ctx.fillRect(10, y, 8, 8);
     ctx.fillRect(494, y, 8, 8);
-    ctx.fillStyle = '#9cb2cc';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(10, y + 7, 8, 1.5);
     ctx.fillRect(494, y + 7, 8, 1.5);
   }
 
-  // 右侧机加工枪铁灰垂直面板接缝槽 (Machined gunmetal vertical seam channel — no bright neon bar)
-  ctx.fillStyle = '#1c2635';
+  // 右侧机加工垂直面板接缝槽
+  ctx.fillStyle = '#586068';
   ctx.fillRect(462, 10, 12, 492);
-  ctx.strokeStyle = 'rgba(186, 210, 235, 0.32)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
   ctx.lineWidth = 1;
   ctx.strokeRect(462.5, 10.5, 11, 491);
 
-  // 12 层 2U/3U 超写实枪铁灰与炭灰拉丝刀片服务器面板 (Visible brushed metal, panel seams & cooling vents)
+  // 12 层 2U/3U 超写实拉丝刀片服务器面板
   const bayH = 512 / 12;
   for (let i = 0; i < 12; i++) {
     const y = i * bayH;
-    // 枪铁灰 (#3b4a5e) 与炭灰 (#2e3b4e) 交替拉丝金属面板
-    ctx.fillStyle = i % 2 === 0 ? '#3b4a5e' : '#2e3b4e';
+    ctx.fillStyle = i % 2 === 0 ? '#e4e8ec' : '#ced4da';
     ctx.fillRect(32, y + 3, 426, bayH - 6);
 
-    // 水平拉丝金属纹理细线 (Visible brushed metal texture)
-    ctx.fillStyle = 'rgba(226, 232, 240, 0.09)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
     for (let ly = y + 6; ly < y + bayH - 5; ly += 3) {
       ctx.fillRect(34, ly, 422, 1);
     }
 
-    // 面板接缝深槽与 45° 高光倒角边框 (Panel seams & crisp specular bevel highlight)
-    ctx.strokeStyle = '#17202d';
+    ctx.strokeStyle = '#485058';
     ctx.lineWidth = 2;
     ctx.strokeRect(31.5, y + 2.5, 427, bayH - 5);
-    ctx.strokeStyle = 'rgba(198, 216, 236, 0.48)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
     ctx.lineWidth = 1.4;
     ctx.strokeRect(33, y + 4, 424, bayH - 8);
 
-    // 左侧真实六角蜂窝/百叶进风散热孔区 (Realistic cooling vents)
-    ctx.fillStyle = '#1b2534';
+    // 左侧真实六角蜂窝/百叶进风散热孔区
+    ctx.fillStyle = '#505860';
     ctx.fillRect(62, y + 8, 124, bayH - 16);
-    ctx.fillStyle = '#5e738f';
+    ctx.fillStyle = '#dde2e8';
     for (let vx = 68; vx < 180; vx += 12) {
       for (let vy = y + 11; vy < y + bayH - 11; vy += 6) {
         ctx.fillRect(vx, vy, 8, 3);
       }
     }
 
-    // 右侧 4 组枪铁灰拉丝热插拔托架与面板接缝
+    // 右侧 4 组拉丝热插拔托架
     for (let d = 0; d < 4; d++) {
       const dx = 196 + d * 62;
-      ctx.fillStyle = '#222e3f';
+      ctx.fillStyle = '#687078';
       ctx.fillRect(dx, y + 7, 54, bayH - 14);
-      // 枪铁灰金属拉手与高光上沿
-      ctx.fillStyle = '#5a708c';
+      ctx.fillStyle = '#dce0e6';
       ctx.fillRect(dx + 4, y + 10, 36, bayH - 20);
-      ctx.fillStyle = '#9cb3cf';
+      ctx.fillStyle = '#ffffff';
       ctx.fillRect(dx + 4, y + 10, 36, 2);
 
-      // 仅在极少数托架上点缀微小稀疏的深青色指示灯 (Only tiny, sparse deep-cyan indicator lights)
       if ((i * 5 + d * 3) % 11 === 0) {
-        ctx.fillStyle = '#00a8d6';
+        ctx.fillStyle = '#00c4f0';
         ctx.fillRect(dx + 45, y + 14, 3.5, 3.5);
       } else if ((i * 7 + d) % 13 === 0) {
-        ctx.fillStyle = '#0369a1';
+        ctx.fillStyle = '#0284c7';
         ctx.fillRect(dx + 45, y + 14, 3, 3);
       }
     }
 
-    // 左侧极小稀疏深青色电源指示灯点 (Tiny sparse deep-cyan LED every 3rd blade)
     if (i % 3 === 0) {
-      ctx.fillStyle = '#00a8d6';
+      ctx.fillStyle = '#00c4f0';
       ctx.fillRect(44, y + bayH * 0.44, 4, 4);
     } else {
-      ctx.fillStyle = '#334459';
+      ctx.fillStyle = '#545c64';
       ctx.fillRect(44, y + bayH * 0.44, 4, 4);
     }
   }
@@ -1770,6 +1761,7 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
   const v04ZhTitle = V04_ZONE_CHINESE_TITLES[zone.id] || zone.shortName;
 
   let isV03ZonePanel = true;
+  let isTronWireframePanel = false;
 
   const redraw = (
     score: number,
@@ -1777,10 +1769,14 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
     solvedCount: number,
     totalChallenges: number,
     threats = 0,
-    v03ModeFlag?: boolean
+    v03ModeFlag?: boolean,
+    tronWireframeFlag?: boolean
   ) => {
     if (v03ModeFlag !== undefined) {
       isV03ZonePanel = v03ModeFlag;
+    }
+    if (tronWireframeFlag !== undefined) {
+      isTronWireframePanel = tronWireframeFlag;
     }
     ctx.clearRect(0, 0, 960, 260);
 
@@ -1788,6 +1784,98 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
     const padY = 24;
     const w = 960 - padX * 2;
     const h = 260 - padY * 2;
+
+    if (isTronWireframePanel) {
+      // 0.1版（赛博线框风）专属：全透明 L 型折线框 + 上下微刻度线 + 适配强 Bloom 1.5 的锐利文字
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0, 168, 214, 0.42)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(padX, padY, w, h);
+
+      // 四角 L 型直角高亮折线
+      const cLen = 34;
+      ctx.strokeStyle = '#00b8e6';
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.moveTo(padX, padY + cLen);
+      ctx.lineTo(padX, padY);
+      ctx.lineTo(padX + cLen, padY);
+      ctx.moveTo(padX + w - cLen, padY);
+      ctx.lineTo(padX + w, padY);
+      ctx.lineTo(padX + w, padY + cLen);
+      ctx.moveTo(padX, padY + h - cLen);
+      ctx.lineTo(padX, padY + h);
+      ctx.lineTo(padX + cLen, padY + h);
+      ctx.moveTo(padX + w - cLen, padY + h);
+      ctx.lineTo(padX + w, padY + h);
+      ctx.lineTo(padX + w, padY + h - cLen);
+      ctx.stroke();
+
+      // 顶部与底部微刻度尺线
+      ctx.strokeStyle = 'rgba(0, 184, 230, 0.55)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i <= 16; i++) {
+        const tx = padX + 90 + i * 44;
+        const th = i % 4 === 0 ? 10 : 5;
+        ctx.beginPath();
+        ctx.moveTo(tx, padY);
+        ctx.lineTo(tx, padY + th);
+        ctx.moveTo(tx, padY + h);
+        ctx.lineTo(tx, padY + h - th);
+        ctx.stroke();
+      }
+
+      // 左侧六边形线框图标
+      const iconCx = 144;
+      const iconCy = 130;
+      ctx.strokeStyle = '#00a8d6';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        const hx = iconCx + Math.cos(a) * 62;
+        const hy = iconCy + Math.sin(a) * 62;
+        if (i === 0) ctx.moveTo(hx, hy);
+        else ctx.lineTo(hx, hy);
+      }
+      ctx.closePath();
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(iconCx, iconCy);
+      ctx.scale(0.8, 0.8);
+      drawV02VectorIcon(ctx, zone.v02Icon, 0, 0, '#00b8e6', true);
+      ctx.restore();
+
+      // 竖向极细青色分割线
+      ctx.fillStyle = 'rgba(0, 184, 230, 0.45)';
+      ctx.fillRect(242, 58, 2, 144);
+
+      // 分区中文名（控制明度在 threshold=0.1 下呈现精致微光而不过曝）
+      ctx.fillStyle = '#9ce2f2';
+      ctx.font =
+        '600 82px "Share Tech Mono", "Chakra Petch", "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(v03ZhTitle, 282, 124);
+
+      // 下方极细单色线条槽进度
+      const ratio = Math.max(0.2, Math.min(1.0, solvedCount / Math.max(1, totalChallenges)));
+      const lineX = 284;
+      const lineY = 188;
+      const lineW = 540;
+      ctx.strokeStyle = 'rgba(0, 184, 230, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(lineX, lineY - 3, lineW, 8);
+      ctx.fillStyle = threats > 0 ? '#ff3300' : '#00b8e6';
+      ctx.fillRect(lineX + 2, lineY - 1, Math.round((lineW - 4) * ratio), 4);
+      ctx.restore();
+
+      void score;
+      void totalScore;
+      texture.needsUpdate = true;
+      return;
+    }
 
     if (isV03ZonePanel) {
       // v0.3/v0.5 专属：极简高清晰全息分区面板（科技矢量图标 + 锐利未来感简体中文分区名称 + 柔润青色切角微光边框）
@@ -1964,11 +2052,11 @@ export function createV03StorageBayTexture(maxAnisotropy = 4): THREE.CanvasTextu
   canvas.height = 512;
   const ctx = canvas.getContext('2d')!;
 
-  // 炭灰金属柜体底色 (Charcoal grey metallic base, NOT pure black)
-  ctx.fillStyle = '#243042';
+  // 高明度存储阵列细节贴图（与 color: 0x6a7a8c 乘法叠加后还原高反光冷灰蓝金属质感）
+  ctx.fillStyle = '#b4bac0';
   ctx.fillRect(0, 0, 512, 512);
 
-  // 10 行 × 8 列 = 80 块高密热插拔磁盘阵列托架 (Dense rows of disk bays with gunmetal brushed metal, vents & panel seams)
+  // 10 行 × 8 列 = 80 块高密热插拔磁盘阵列托架
   const rows = 10;
   const cols = 8;
   const padX = 18;
@@ -1981,36 +2069,31 @@ export function createV03StorageBayTexture(maxAnisotropy = 4): THREE.CanvasTextu
       const x = padX + c * cellW;
       const y = padY + r * cellH;
 
-      // 枪铁灰硬盘盒外框与深色面板接缝
-      ctx.fillStyle = '#324156';
+      ctx.fillStyle = '#d4d8de';
       ctx.fillRect(x + 2, y + 2, cellW - 4, cellH - 4);
 
-      // 银灰金属倒角边框 (Crisp specular beveled edge)
-      ctx.strokeStyle = 'rgba(176, 198, 224, 0.48)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
       ctx.lineWidth = 1.2;
       ctx.strokeRect(x + 2.5, y + 2.5, cellW - 5, cellH - 5);
 
-      // 枪铁灰拉丝金属卡扣把手
-      ctx.fillStyle = '#586e8a';
+      ctx.fillStyle = '#eceff2';
       ctx.fillRect(x + 6, y + 6, cellW - 18, cellH - 12);
-      ctx.fillStyle = '#9cb4d2';
+      ctx.fillStyle = '#ffffff';
       ctx.fillRect(x + 6, y + 6, cellW - 18, 2);
 
-      // 托架正面微孔通风槽 (Realistic drive caddy cooling vents)
-      ctx.fillStyle = '#1b2534';
+      ctx.fillStyle = '#4c545c';
       ctx.fillRect(x + 9, y + 12, cellW - 24, 4);
       ctx.fillRect(x + 9, y + 19, cellW - 24, 4);
 
-      // 仅在稀疏盘位上点亮微小深青色指示灯 (Only tiny, sparse deep-cyan indicator lights)
       const seed = (r * 7 + c * 13) % 14;
       if (seed === 0 || seed === 5) {
-        ctx.fillStyle = '#00a8d6';
+        ctx.fillStyle = '#00c4f0';
         ctx.fillRect(x + cellW - 10, y + 10, 3.5, 6);
       } else if (seed === 2 || seed === 9) {
-        ctx.fillStyle = '#0369a1';
+        ctx.fillStyle = '#0284c7';
         ctx.fillRect(x + cellW - 10, y + 10, 3, 5);
       } else {
-        ctx.fillStyle = '#243244';
+        ctx.fillStyle = '#505860';
         ctx.fillRect(x + cellW - 10, y + 10, 3, 5);
       }
     }
@@ -2020,6 +2103,30 @@ export function createV03StorageBayTexture(maxAnisotropy = 4): THREE.CanvasTextu
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = Math.min(4, Math.max(1, maxAnisotropy));
   _cachedV03StorageBayTex = tex;
+  return tex;
+}
+
+let _cachedContactShadowTex: THREE.CanvasTexture | null = null;
+/**
+ * 15) 机柜底部真实接触阴影贴图 (Soft radial black contact shadow decal)
+ */
+export function createContactShadowTexture(): THREE.CanvasTexture {
+  if (_cachedContactShadowTex) return _cachedContactShadowTex;
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createRadialGradient(128, 128, 12, 128, 128, 126);
+  grad.addColorStop(0.0, 'rgba(0, 0, 0, 0.92)');
+  grad.addColorStop(0.45, 'rgba(0, 0, 0, 0.68)');
+  grad.addColorStop(0.76, 'rgba(0, 0, 0, 0.24)');
+  grad.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _cachedContactShadowTex = tex;
   return tex;
 }
 

@@ -60,8 +60,8 @@ interface DirectorConsoleProps {
 }
 
 const VERSION_OPTIONS: { value: SandboxVersion; label: string }[] = [
-  { value: '0.3', label: 'v0.3 暗黑钛金版' },
-  { value: '0.5', label: 'v0.5 中央突击版' },
+  { value: '0.3', label: '0.1版' },
+  { value: '0.5', label: '0.2版' },
 ];
 
 export const DirectorConsole: React.FC<DirectorConsoleProps> = ({
@@ -94,10 +94,11 @@ export const DirectorConsole: React.FC<DirectorConsoleProps> = ({
 }) => {
   const currentDirectorZone =
     zones.find((z) => z.id === directorZoneId) || zones[0];
+  const isWireframe = sandboxVersion === '0.3';
 
   return (
     <div
-      className="pointer-events-auto relative z-20 w-full max-w-[920px] transition-transform duration-200 ease-out"
+      className="pointer-events-auto relative z-20 w-full max-w-[880px] 2xl:max-w-[1080px] transition-transform duration-200 ease-out"
       style={{
         transform: dockCollapsed ? 'translateY(calc(100% - 28px))' : 'translateY(0)',
       }}
@@ -107,10 +108,12 @@ export const DirectorConsole: React.FC<DirectorConsoleProps> = ({
         <button
           type="button"
           onClick={onToggleCollapse}
-          className="flex items-center gap-1.5 px-4 py-1 text-xs font-medium text-[#e5e7eb] border border-b-0 border-[#00d4ff]/35 rounded-t-md hover:text-[#00d4ff] transition-colors cursor-pointer"
+          className={`flex items-center gap-1.5 px-4 py-1 text-xs font-medium text-[#e5e7eb] border border-b-0 border-[#00d4ff]/45 hover:text-[#00d4ff] transition-all duration-500 cursor-pointer ${
+            isWireframe ? 'rounded-none' : 'rounded-t-md'
+          }`}
           style={{
-            backgroundColor: 'rgba(10, 14, 23, 0.85)',
-            backdropFilter: 'blur(8px)',
+            backgroundColor: isWireframe ? 'rgba(0, 0, 0, 0.35)' : 'rgba(10, 14, 23, 0.85)',
+            backdropFilter: isWireframe ? 'none' : 'blur(8px)',
           }}
         >
           {dockCollapsed ? (
@@ -127,20 +130,33 @@ export const DirectorConsole: React.FC<DirectorConsoleProps> = ({
         </button>
       </div>
 
-      {/* 控制台主体：八边形切角毛玻璃 */}
+      {/* 控制台主体：0.2版八边形切角毛玻璃 / 0.1版极客透明线框 */}
       <div
-        className="p-[1px] clip-octa-12"
+        className={`relative p-[1px] transition-all duration-700 ${
+          isWireframe ? 'border border-[#00d4ff]/35' : 'clip-octa-12'
+        }`}
         style={{
-          background:
-            'linear-gradient(135deg, rgba(0,212,255,0.6) 0%, rgba(0,212,255,0.18) 50%, rgba(0,212,255,0.5) 100%)',
+          background: isWireframe
+            ? 'rgba(0, 0, 0, 0.25)'
+            : 'linear-gradient(135deg, rgba(0,212,255,0.6) 0%, rgba(0,212,255,0.18) 50%, rgba(0,212,255,0.5) 100%)',
         }}
       >
+        {isWireframe && (
+          <div className="pointer-events-none absolute inset-0 z-20">
+            <span className="absolute top-0 left-0 w-3 h-3 border-t border-l border-[#00d4ff] shadow-[0_0_6px_#00d4ff]" />
+            <span className="absolute top-0 right-0 w-3 h-3 border-t border-r border-[#00d4ff] shadow-[0_0_6px_#00d4ff]" />
+            <span className="absolute bottom-0 left-0 w-3 h-3 border-b border-l border-[#00d4ff] shadow-[0_0_6px_#00d4ff]" />
+            <span className="absolute bottom-0 right-0 w-3 h-3 border-b border-r border-[#00d4ff] shadow-[0_0_6px_#00d4ff]" />
+          </div>
+        )}
         <div
-          className="clip-octa-12 px-3.5 py-2.5 space-y-2"
+          className={`${
+            isWireframe ? '' : 'clip-octa-12'
+          } px-3.5 py-2.5 space-y-2 transition-all duration-700`}
           style={{
-            backgroundColor: 'rgba(10, 14, 23, 0.82)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
+            backgroundColor: isWireframe ? 'rgba(0, 0, 0, 0)' : 'rgba(10, 14, 23, 0.82)',
+            backdropFilter: isWireframe ? 'none' : 'blur(8px)',
+            WebkitBackdropFilter: isWireframe ? 'none' : 'blur(8px)',
           }}
         >
           {/* 第一行：分区巡航 + 视角/版本下拉框/铭牌/推演 */}

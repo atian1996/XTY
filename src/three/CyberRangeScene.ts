@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import {
@@ -23,6 +23,7 @@ import {
 } from '../types/cyberRange';
 import { soundFX } from '../utils/soundFX';
 import {
+  buildTronWireframeFromGroup,
   ChallengeNodeUserData,
   createChallengeNode,
   createHumanoidHackerAvatar,
@@ -43,10 +44,6 @@ import {
   groundDiscVertexShader,
   hexShieldFragmentShader,
   hexShieldVertexShader,
-  holoShellFragmentShader,
-  holoShellVertexShader,
-  plasmaBeamFragmentShader,
-  plasmaBeamVertexShader,
   skyDomeFragmentShader,
   skyDomeVertexShader,
   VignetteChromaticShader,
@@ -74,6 +71,10 @@ interface ZoneRuntime {
   v02ArmorGroup: THREE.Group;
   v03CenterHardwareGroup: THREE.Group;
   v04CenterHardwareGroup: THREE.Group;
+  v01TronPlatformWireGroup: THREE.Group;
+  v01TronPrimaryMat: THREE.LineBasicMaterial;
+  v01TronSeamMat: THREE.LineBasicMaterial;
+  solidPlatformMeshes: THREE.Mesh[];
   v03FloorProjMesh: THREE.Mesh;
   v03FloorProjRedraw: (
     solvedCount: number,
@@ -188,6 +189,14 @@ interface CircularBusPulseRuntime {
   duration: number;
 }
 
+interface PipeParticleStreamRuntime {
+  curve: THREE.Curve<THREE.Vector3>;
+  points: THREE.Points;
+  offsets: Float32Array;
+  speed: number;
+  dir: number;
+}
+
 const _tmpVecA = new THREE.Vector3();
 const _tmpVecB = new THREE.Vector3();
 const _tmpVecC = new THREE.Vector3();
@@ -209,6 +218,7 @@ export class CyberRangeScene {
   private nodePalette!: SharedNodePalette;
   private resizeObserver?: ResizeObserver;
   private envRT?: THREE.WebGLRenderTarget;
+  private cubeEnvRT?: THREE.WebGLCubeRenderTarget;
   private contextLost = false;
   private slowFrameStreak = 0;
   private useSoftwarePacing = false;
@@ -236,6 +246,7 @@ export class CyberRangeScene {
     uTime: { value: 0 },
     uDarkMode: { value: 1.0 },
     uFuturisticMode: { value: 0.0 },
+    uWireframeMode: { value: 0.0 },
   };
 
   private ambientLight!: THREE.AmbientLight;
@@ -280,10 +291,35 @@ export class CyberRangeScene {
   private v04CoreInnerRings: THREE.Mesh[] = [];
   private v04CoreOuterGimbal = new THREE.Group();
 
-  // v0.5 Central Octagonal Dark Chrome Attack Command Console
+  // v0.5 Central Octagonal Dark Chrome Attack Command Console & High-Energy Plasma Orb
   private v05OrangeRedCore!: THREE.Group;
+  private v05PlasmaHaloSprite?: THREE.Sprite;
+  private v05PlasmaOuterShell?: THREE.Mesh;
   private v05ConsoleGimbalA = new THREE.Group();
   private v05ConsoleGimbalB = new THREE.Group();
+  private blueCubeEnvTex?: THREE.CubeTexture;
+  private pipeParticleSpriteTex?: THREE.CanvasTexture;
+  private pipeParticleStreams: PipeParticleStreamRuntime[] = [];
+
+  // 0.1版 (赛博线框风 / Tron Wireframe) 专属核心、雷达地面、直连细青线与 0.8s 溶解过渡状态
+  private v01TronGroundGroup = new THREE.Group();
+  private v01TronRadarSweepLine?: THREE.LineSegments;
+  private v01TronAttackCoreGroup = new THREE.Group();
+  private v01TronRedTorusRings: THREE.Object3D[] = [];
+  private v01TronLinksGroup = new THREE.Group();
+  private v01TronPrimaryLineMat!: THREE.LineBasicMaterial;
+  private v01TronSeamLineMat!: THREE.LineBasicMaterial;
+  private v01TronRedCoreMat!: THREE.LineBasicMaterial;
+  private v01TronRedOrbCoreMat!: THREE.MeshBasicMaterial;
+  private v01TronRedOrbAuraMat!: THREE.MeshBasicMaterial;
+  private v01TronRedOrbSpriteMat!: THREE.SpriteMaterial;
+  private v01TronGroundPrimaryMat!: THREE.LineBasicMaterial;
+  private v01TronGroundSeamMat!: THREE.LineBasicMaterial;
+  private skyDomeMesh?: THREE.Mesh;
+  private groundDiscMesh?: THREE.Mesh;
+  private outerRimMesh?: THREE.Mesh;
+  private wireframeMix = 0;
+  private targetWireframeMix = 0;
 
   private zones = new Map<ZoneId, ZoneRuntime>();
   private allChallengeNodes: THREE.Group[] = [];
@@ -401,10 +437,10 @@ export class CyberRangeScene {
     const width = Math.max(1, container.clientWidth || window.innerWidth);
     const height = Math.max(1, container.clientHeight || window.innerHeight);
 
-    // 1) Scene & Camera (Deep midnight blue with cinematic volumetric fog, 85mm telephoto lens)
+    // 1) Scene & Camera (Ultra-deep 0x020408 background & subtle FogExp2(0.005) to keep far racks crisp)
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x050e20);
-    this.scene.fog = new THREE.FogExp2(0x061226, 0.0052);
+    this.scene.background = new THREE.Color(0x020408);
+    this.scene.fog = new THREE.FogExp2(0x020408, 0.005);
 
     this.camera = new THREE.PerspectiveCamera(24, width / height, 0.1, 450);
 
@@ -416,7 +452,7 @@ export class CyberRangeScene {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.06;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.setPixelRatio(
       this.isSoftwareGl
         ? Math.min(1, 1280 / Math.max(1, width))
@@ -427,16 +463,19 @@ export class CyberRangeScene {
 
     container.appendChild(this.renderer.domElement);
 
-    // 3) Studio Environment Reflection
+    // 3) Procedural Neutral-Cool Studio CubeCamera EnvMap (keeps metallic reflections crisp without blue wash)
     try {
-      const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
-      const roomEnv = new RoomEnvironment();
-      this.envRT = pmremGenerator.fromScene(roomEnv, 0.04);
-      this.scene.environment = this.envRT.texture;
-      roomEnv.dispose();
-      pmremGenerator.dispose();
+      const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(128);
+      const cubeCamera = new THREE.CubeCamera(0.1, 1000, cubeRenderTarget);
+      const envScene = new THREE.Scene();
+      envScene.background = new THREE.Color(0x141b26);
+      cubeCamera.update(this.renderer, envScene);
+      this.cubeEnvRT = cubeRenderTarget;
+      this.scene.environment = cubeRenderTarget.texture;
     } catch (err) {
-      console.warn('Environment PMREM fallback:', err);
+      console.warn('CubeCamera EnvMap fallback:', err);
+      this.blueCubeEnvTex = this.createBlueStudioCubeTexture();
+      this.scene.environment = this.blueCubeEnvTex;
     }
 
     // 4) OrbitControls
@@ -444,7 +483,7 @@ export class CyberRangeScene {
     this.controls.enableDamping = !this.isSoftwareGl;
     this.controls.dampingFactor = 0.055;
     this.controls.autoRotate = false;
-    this.controls.autoRotateSpeed = 0.8;
+    this.controls.autoRotateSpeed = 1.6;
     this.controls.minPolarAngle = Math.PI * 0.08;
     this.controls.maxPolarAngle = Math.PI * 0.47;
     this.controls.minDistance = 10;
@@ -485,7 +524,7 @@ export class CyberRangeScene {
       }
     });
 
-    // 5) 后处理链（8K 清晰锐焦 + FXAA 抗锯齿 + 柔润克制微辉光）
+    // 5) 后处理链：收紧 UnrealBloomPass(strength: 0.6, radius: 0.2, threshold: 0.85) + OutputPass + FXAA
     if (!this.isSoftwareGl) {
       try {
         const pr = this.renderer.getPixelRatio();
@@ -495,9 +534,9 @@ export class CyberRangeScene {
         const isMobile = width < 900;
         this.bloomPass = new UnrealBloomPass(
           new THREE.Vector2(width, height),
-          isMobile ? 0.15 : 0.22,
-          0.32,
-          0.88
+          0.6,
+          0.2,
+          0.85
         );
         this.composer.addPass(this.bloomPass);
 
@@ -506,6 +545,9 @@ export class CyberRangeScene {
           this.vignettePass.uniforms.uMacroDof.value = 0.0;
           this.composer.addPass(this.vignettePass);
         }
+
+        // OutputPass applies ACESFilmicToneMapping + Linear->sRGB conversion so PBR racks are never dark linear values
+        this.composer.addPass(new OutputPass());
 
         this.fxaaPass = new ShaderPass(FXAAShader);
         this.fxaaPass.material.uniforms['resolution'].value.set(
@@ -525,11 +567,16 @@ export class CyberRangeScene {
     // 6) Build Scene Hierarchy & Shared Material/Geometry Palette (Retaining ONLY v0.3 & v0.5)
     this.nodePalette = createSharedNodePalette(this.maxAnisotropy);
     this.scene.add(this.worldGroup);
-    this.coreGroup.add(this.v03CoreGroup, this.v05CenterAttackGroup);
+    this.coreGroup.add(
+      this.v03CoreGroup,
+      this.v05CenterAttackGroup,
+      this.v01TronAttackCoreGroup
+    );
     this.worldGroup.add(
       this.groundGroup,
       this.coreGroup,
       this.v03PipesGroup,
+      this.v01TronLinksGroup,
       this.attackGroup,
       this.fxGroup
     );
@@ -540,8 +587,9 @@ export class CyberRangeScene {
     this.buildZones(zonesData);
     this.buildCrossZoneLinks();
     this.buildV05CenterAttackConsole();
+    this.buildV01TronCenterAttackAndLinks(zonesData);
 
-    // 初始化默认版本为 v0.5（中央突击版 · 八角暗黑镀铬攻击指挥台 + 高能橙红等离子光束核心 + 半透明全息罩）
+    // 初始化默认版本为 0.2版 ('0.5' 中央突击版 · 八角暗黑镀铬攻击指挥台 + 高能橙红等离子光束核心 + 半透明全息罩)
     this.setVersion('0.5', true);
     this.seedInitialActiveBeams(zonesData);
 
@@ -550,38 +598,94 @@ export class CyberRangeScene {
   }
 
   /**
-   * 电影级多点位照明系统：柔和漫反射环境光 + 微弱半球光 (Faint Hemisphere Light) + 双侧强冷青金属棱边轮廓逆光
+   * 生成极暗蓝色金属环境 CubeTexture（scene.environment 指向深蓝环境贴图，确保 metalness: 0.6 金属漆表面正确反光而无白斑刺眼）
+   */
+  private createBlueStudioCubeTexture(): THREE.CubeTexture {
+    const faces = [0, 1, 2, 3, 4, 5].map((idx) => {
+      const c = document.createElement('canvas');
+      c.width = 128;
+      c.height = 128;
+      const ctx = c.getContext('2d')!;
+      if (idx === 2) {
+        // +Y 天顶：深邃暗蓝柔光天幕
+        const grad = ctx.createRadialGradient(64, 64, 10, 64, 64, 92);
+        grad.addColorStop(0, '#184b7a');
+        grad.addColorStop(0.5, '#0c2748');
+        grad.addColorStop(1, '#061120');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 128);
+      } else if (idx === 3) {
+        // -Y 地面：#0a0e17 深蓝黑基底
+        ctx.fillStyle = '#0a0e17';
+        ctx.fillRect(0, 0, 128, 128);
+      } else {
+        // 四周水平面：暗蓝金属棚拍渐变 + 柔和青蓝地平线反射带
+        const grad = ctx.createLinearGradient(0, 0, 0, 128);
+        grad.addColorStop(0, '#071426');
+        grad.addColorStop(0.28, '#0f345e');
+        grad.addColorStop(0.44, '#1b649c');
+        grad.addColorStop(0.56, '#0d2644');
+        grad.addColorStop(1, '#0a0e17');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 128);
+      }
+      return c;
+    });
+    const cubeTex = new THREE.CubeTexture(faces);
+    cubeTex.colorSpace = THREE.SRGBColorSpace;
+    cubeTex.needsUpdate = true;
+    return cubeTex;
+  }
+
+  private createRadialGlowTexture(stops: [number, string][]): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+    const grad = ctx.createRadialGradient(128, 128, 2, 128, 128, 128);
+    stops.forEach(([offset, col]) => grad.addColorStop(offset, col));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  /**
+   * 全局氛围光系统：冷白 HemisphereLight(0xccddff, 0x050810, 1.0) + 左上纯白主光(0xffffff, 1.5) 塑造清晰明暗对比
    */
   private setupLights(zonesData: ZoneConfig[]) {
-    this.ambientLight = new THREE.AmbientLight(0x325482, 1.36);
+    this.ambientLight = new THREE.AmbientLight(0x94a3b8, 0.35);
     this.scene.add(this.ambientLight);
 
-    this.hemiLight = new THREE.HemisphereLight(0x64a0e8, 0x071224, 0.48);
+    this.hemiLight = new THREE.HemisphereLight(0xccddff, 0x050810, 1.0);
     this.scene.add(this.hemiLight);
 
-    this.keyLight = new THREE.DirectionalLight(0xdbeafe, 1.42);
-    this.keyLight.position.set(22, 42, 26);
+    // 左上方纯白平行光（强度 1.5）：制造清晰明暗分界线，呈现冷峻金属质感
+    this.keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    this.keyLight.position.set(-22, 34, 24);
     this.scene.add(this.keyLight);
 
-    // 左后方强冷青轮廓逆光 (Strong Rim Lighting on Gunmetal & Slate Silver Server Racks)
-    this.rimLight = new THREE.DirectionalLight(0x38bdf8, 2.45);
+    // 左后方冷白金属棱边轮廓光
+    this.rimLight = new THREE.DirectionalLight(0xdbeafe, 0.45);
     this.rimLight.position.set(-26, 28, -28);
     this.scene.add(this.rimLight);
 
-    // 右后方冰青金属棱边轮廓补光
-    this.backRightRimLight = new THREE.DirectionalLight(0x00e5ff, 2.15);
+    // 右后方极克制冷灰轮廓补光
+    this.backRightRimLight = new THREE.DirectionalLight(0x94a3b8, 0.35);
     this.backRightRimLight.position.set(26, 26, -24);
     this.scene.add(this.backRightRimLight);
 
-    this.fillLight = new THREE.DirectionalLight(0x6492ca, 1.18);
-    this.fillLight.position.set(-18, 22, 24);
+    // 右前方极弱中性灰补光，保留背光面纹理但不削弱明暗对比
+    this.fillLight = new THREE.DirectionalLight(0x94a3b8, 0.2);
+    this.fillLight.position.set(18, 20, 22);
     this.scene.add(this.fillLight);
 
     void zonesData;
 
-    // 中央八角攻击指挥台高能橙红等离子束核心微光点光源
-    this.consoleRedLight = new THREE.PointLight(0xff3318, 1.38, 10.5, 2);
-    this.consoleRedLight.position.set(0, 1.85, 0);
+    // 中央八角攻击台高能橙红等离子光球局部红橙辉光
+    this.consoleRedLight = new THREE.PointLight(0xff5500, 1.35, 11.0, 2);
+    this.consoleRedLight.position.set(0, 1.55, 0);
     this.scene.add(this.consoleRedLight);
   }
 
@@ -603,6 +707,7 @@ export class CyberRangeScene {
         depthWrite: false,
       })
     );
+    this.skyDomeMesh = skyDome;
     this.groundGroup.add(skyDome);
 
     this.backingMat = new THREE.MeshBasicMaterial({
@@ -616,9 +721,9 @@ export class CyberRangeScene {
     this.groundGroup.add(backing);
 
     this.outerRimMat = new THREE.MeshStandardMaterial({
-      color: 0x16202e,
-      metalness: 0.88,
-      roughness: 0.28,
+      color: 0x445566,
+      metalness: 0.7,
+      roughness: 0.4,
     });
     const outerRim = new THREE.Mesh(
       new THREE.TorusGeometry(28.5, 0.12, 8, 96),
@@ -626,6 +731,7 @@ export class CyberRangeScene {
     );
     outerRim.rotation.x = Math.PI / 2;
     outerRim.position.y = -0.58;
+    this.outerRimMesh = outerRim;
     this.groundGroup.add(outerRim);
 
     // v0.3 Highly polished dark mirror glass floor that softly reflects the 3D models above
@@ -653,6 +759,7 @@ export class CyberRangeScene {
         uTime: this.sharedUniforms.uTime,
         uDarkMode: this.sharedUniforms.uDarkMode,
         uFuturisticMode: this.sharedUniforms.uFuturisticMode,
+        uWireframeMode: this.sharedUniforms.uWireframeMode,
       },
       vertexShader: groundDiscVertexShader,
       fragmentShader: groundDiscFragmentShader,
@@ -664,7 +771,107 @@ export class CyberRangeScene {
     groundDisc.rotation.x = -Math.PI / 2;
     groundDisc.position.y = -0.595;
     groundDisc.renderOrder = 1;
+    this.groundDiscMesh = groundDisc;
     this.groundGroup.add(groundDisc);
+
+    // 0.1版 (Tron 赛博线框风) 专属地面辅助刻度线：采用暗青色 0x003355 极淡线条，不发光，配合地面六边形网格撑起空间感
+    this.v01TronGroundPrimaryMat = new THREE.LineBasicMaterial({
+      color: 0x003355,
+      transparent: true,
+      opacity: 0,
+    });
+    this.v01TronGroundSeamMat = new THREE.LineBasicMaterial({
+      color: 0x003355,
+      transparent: true,
+      opacity: 0,
+    });
+
+    const groundY = -0.57;
+    const crossPts: THREE.Vector3[] = [
+      new THREE.Vector3(-32, groundY, 0),
+      new THREE.Vector3(32, groundY, 0),
+      new THREE.Vector3(0, groundY, -32),
+      new THREE.Vector3(0, groundY, 32),
+    ];
+    // 十字轴上的精密雷达刻度短线
+    for (let d = -28; d <= 28; d += 2) {
+      if (Math.abs(d) < 3) continue;
+      const tickHalf = d % 4 === 0 ? 0.35 : 0.16;
+      crossPts.push(
+        new THREE.Vector3(d, groundY, -tickHalf),
+        new THREE.Vector3(d, groundY, tickHalf),
+        new THREE.Vector3(-tickHalf, groundY, d),
+        new THREE.Vector3(tickHalf, groundY, d)
+      );
+    }
+    this.v01TronGroundGroup.add(
+      new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(crossPts),
+        this.v01TronGroundPrimaryMat
+      )
+    );
+
+    // 45° 斜向极细战术辅助十字线与雷达同心圆环
+    const seamGroundPts: THREE.Vector3[] = [
+      new THREE.Vector3(-22, groundY, -22),
+      new THREE.Vector3(22, groundY, 22),
+      new THREE.Vector3(-22, groundY, 22),
+      new THREE.Vector3(22, groundY, -22),
+    ];
+    const radarRadii = [4.6, 9.2, 14.2, 19.0, 23.8, 28.5];
+    radarRadii.forEach((r, rIdx) => {
+      const segs = 128;
+      const circlePts: THREE.Vector3[] = [];
+      for (let s = 0; s < segs; s++) {
+        const a0 = (s / segs) * Math.PI * 2;
+        const a1 = ((s + 1) / segs) * Math.PI * 2;
+        // 偶数组为实线圆，奇数组为精密虚线扫描圆
+        if (rIdx % 2 === 0 || s % 2 === 0) {
+          circlePts.push(
+            new THREE.Vector3(Math.cos(a0) * r, groundY, Math.sin(a0) * r),
+            new THREE.Vector3(Math.cos(a1) * r, groundY, Math.sin(a1) * r)
+          );
+        }
+      }
+      this.v01TronGroundGroup.add(
+        new THREE.LineSegments(
+          new THREE.BufferGeometry().setFromPoints(circlePts),
+          rIdx === 2 || rIdx === 5
+            ? this.v01TronGroundPrimaryMat
+            : this.v01TronGroundSeamMat
+        )
+      );
+    });
+
+    // 外圈 360° 雷达方位角刻度尺
+    for (let deg = 0; deg < 360; deg += 5) {
+      const rad = (deg * Math.PI) / 180;
+      const rIn = deg % 15 === 0 ? 27.65 : 28.05;
+      const rOut = 28.5;
+      seamGroundPts.push(
+        new THREE.Vector3(Math.cos(rad) * rIn, groundY, Math.sin(rad) * rIn),
+        new THREE.Vector3(Math.cos(rad) * rOut, groundY, Math.sin(rad) * rOut)
+      );
+    }
+    this.v01TronGroundGroup.add(
+      new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(seamGroundPts),
+        this.v01TronGroundSeamMat
+      )
+    );
+
+    // 旋转雷达扫描指针线
+    const sweepPts = [
+      new THREE.Vector3(0, groundY + 0.01, 0),
+      new THREE.Vector3(0, groundY + 0.01, 28.4),
+    ];
+    this.v01TronRadarSweepLine = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(sweepPts),
+      this.v01TronGroundPrimaryMat
+    );
+    this.v01TronGroundGroup.add(this.v01TronRadarSweepLine);
+    this.v01TronGroundGroup.visible = false;
+    this.groundGroup.add(this.v01TronGroundGroup);
 
     const rippleGeo = new THREE.RingGeometry(0.85, 1.0, 48);
     for (let i = 0; i < 12; i++) {
@@ -1329,7 +1536,14 @@ export class CyberRangeScene {
       this.v03CoreGimbalB
     );
 
-    // 3) 优雅发光青色数据管道网络 (Elegant Glowing Cyan Data Pipelines connecting Core & 7 Platforms)
+    // 3) 优雅流光青色数据管道网络 + 流动光粒子流 (Animated ShaderMaterial + Flowing Particle Streams)
+    this.pipeParticleSpriteTex = this.createRadialGlowTexture([
+      [0, 'rgba(230, 252, 255, 1.0)'],
+      [0.32, 'rgba(0, 212, 255, 0.88)'],
+      [0.7, 'rgba(0, 180, 255, 0.24)'],
+      [1, 'rgba(0, 0, 0, 0)'],
+    ]);
+
     zonesData.forEach((z, idx) => {
       const targetPos = new THREE.Vector3(z.position[0], 0.0, z.position[2]);
       const dir = targetPos.clone().setY(0).normalize();
@@ -1338,27 +1552,59 @@ export class CyberRangeScene {
       const midPt = startPt.clone().lerp(endPt, 0.5);
       midPt.y = 0.22;
 
-      // 中央暗黑金属护套管 + 两侧流光青色光纤管道
+      // 中央暗黑金属护套管 + 两侧流光青色光纤管道 + 流动光粒子
       const ortho = new THREE.Vector3(-dir.z, 0, dir.x);
       [-0.16, 0.16].forEach((offset, pIdx) => {
         const pStart = startPt.clone().addScaledVector(ortho, offset);
         const pMid = midPt.clone().addScaledVector(ortho, offset);
         const pEnd = endPt.clone().addScaledVector(ortho, offset);
         const curve = new THREE.QuadraticBezierCurve3(pStart, pMid, pEnd);
-        // Hair-thin cyan and blue laser lines (radius = 0.022)
-        const tubeGeo = new THREE.TubeGeometry(curve, 44, 0.022, 8, false);
+        const tubeGeo = new THREE.TubeGeometry(curve, 44, 0.028, 8, false);
         const pipeMat = new THREE.ShaderMaterial({
           uniforms: {
             uTime: this.sharedUniforms.uTime,
-            uColor: { value: new THREE.Color(pIdx === 0 ? 0x00d4ff : 0x0284c7) },
+            uColor: { value: new THREE.Color(pIdx === 0 ? 0x00d4ff : 0x0ea5e9) },
             uDir: { value: pIdx === 0 ? 1.0 : -1.0 },
           },
           vertexShader: accessPipeVertexShader,
           fragmentShader: accessPipeFragmentShader,
           transparent: true,
+          blending: THREE.AdditiveBlending,
           depthWrite: false,
         });
         this.v03PipesGroup.add(new THREE.Mesh(tubeGeo, pipeMat));
+
+        // 每条管道配套 18 颗沿着曲线流动的青色光粒子，令链路呈现持续流光生命感
+        const pCount = 18;
+        const positions = new Float32Array(pCount * 3);
+        const offsets = new Float32Array(pCount);
+        for (let k = 0; k < pCount; k++) {
+          offsets[k] = k / pCount + (pIdx * 0.04);
+          const pt = curve.getPointAt(offsets[k] % 1);
+          positions[k * 3] = pt.x;
+          positions[k * 3 + 1] = pt.y + 0.03;
+          positions[k * 3 + 2] = pt.z;
+        }
+        const pGeo = new THREE.BufferGeometry();
+        pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const pMat = new THREE.PointsMaterial({
+          map: this.pipeParticleSpriteTex,
+          color: pIdx === 0 ? 0xa5f3fc : 0x38bdf8,
+          size: 0.34,
+          transparent: true,
+          opacity: 0.96,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        const points = new THREE.Points(pGeo, pMat);
+        this.v03PipesGroup.add(points);
+        this.pipeParticleStreams.push({
+          curve,
+          points,
+          offsets,
+          speed: pIdx === 0 ? 0.36 : 0.28,
+          dir: pIdx === 0 ? 1 : -1,
+        });
       });
 
       // 管道底部的暗黑钛金属线槽导轨
@@ -1372,7 +1618,7 @@ export class CyberRangeScene {
       tray.rotation.y = Math.atan2(dir.x, dir.z);
       this.v03PipesGroup.add(tray);
 
-      // 衔接相邻六边形平台的发丝级发光青蓝激光环线 (Hair-thin cyan/blue laser ring lines)
+      // 衔接相邻六边形平台的发丝级发光青蓝激光环线
       const nextZ = zonesData[(idx + 1) % zonesData.length];
       const nextPos = new THREE.Vector3(nextZ.position[0], -0.1, nextZ.position[2]);
       const curPos = new THREE.Vector3(z.position[0], -0.1, z.position[2]);
@@ -1384,16 +1630,17 @@ export class CyberRangeScene {
       lMid.y = -0.05;
 
       const ringCurve = new THREE.QuadraticBezierCurve3(lStart, lMid, lEnd);
-      const ringGeo = new THREE.TubeGeometry(ringCurve, 32, 0.018, 6, false);
+      const ringGeo = new THREE.TubeGeometry(ringCurve, 32, 0.022, 6, false);
       const ringMat = new THREE.ShaderMaterial({
         uniforms: {
           uTime: this.sharedUniforms.uTime,
-          uColor: { value: new THREE.Color(0x0284c7) },
+          uColor: { value: new THREE.Color(0x00d4ff) },
           uDir: { value: 1.0 },
         },
         vertexShader: accessPipeVertexShader,
         fragmentShader: accessPipeFragmentShader,
         transparent: true,
+        blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
       this.v03PipesGroup.add(new THREE.Mesh(ringGeo, ringMat));
@@ -1585,14 +1832,14 @@ export class CyberRangeScene {
    */
   private buildZones(zonesData: ZoneConfig[]) {
     this.hullDarkMat = new THREE.MeshStandardMaterial({
-      color: 0x0a0e16,
-      metalness: 0.78,
-      roughness: 0.48,
+      color: 0x445566,
+      metalness: 0.7,
+      roughness: 0.4,
     });
     this.rimSilverMat = new THREE.MeshStandardMaterial({
-      color: 0x1c2533,
-      metalness: 0.9,
-      roughness: 0.26,
+      color: 0x667788,
+      metalness: 0.7,
+      roughness: 0.4,
     });
 
     zonesData.forEach((zCfg, zIdx) => {
@@ -1606,6 +1853,8 @@ export class CyberRangeScene {
       const baseYOffset = 0;
 
       // 1) 上层外圈重型装甲边框 + 主六棱甲板 + 下层倒锥形推进底壳 + 6 组顶点防撞墩
+      const solidPlatformMeshes: THREE.Mesh[] = [];
+
       const outerCollar = new THREE.Mesh(
         new THREE.CylinderGeometry(4.85, 4.95, 0.24, 6),
         this.rimSilverMat
@@ -1623,6 +1872,7 @@ export class CyberRangeScene {
       underHull.position.y = -baseHeight - 0.35 + baseYOffset;
 
       platformGroup.add(outerCollar, hexMesh, underHull);
+      solidPlatformMeshes.push(outerCollar, hexMesh, underHull);
 
       for (let k = 0; k < 6; k++) {
         const ka = (k / 6) * Math.PI * 2 + Math.PI / 6;
@@ -1637,6 +1887,7 @@ export class CyberRangeScene {
         );
         bumper.rotation.y = ka;
         platformGroup.add(bumper);
+        solidPlatformMeshes.push(bumper);
       }
 
       const v02ArmorGroup = new THREE.Group();
@@ -1662,6 +1913,7 @@ export class CyberRangeScene {
       );
       topCap.position.y = 0.015 + baseYOffset;
       platformGroup.add(topCap);
+      solidPlatformMeshes.push(topCap);
 
       // 3) 边缘描边线
       const edgeNeonMat = new THREE.LineBasicMaterial({
@@ -1687,6 +1939,7 @@ export class CyberRangeScene {
       );
       underBeam.position.y = -1.6;
       platformGroup.add(underBeam);
+      solidPlatformMeshes.push(underBeam);
 
       // 5) v0.3 / v0.5 专属：7 大分区差异化核心工业设备总成 + 地面微光刻度环 + 全息中文标牌
       const v01DecorGroup = new THREE.Group();
@@ -1699,6 +1952,82 @@ export class CyberRangeScene {
         false
       );
       platformGroup.add(v03CenterHardwareGroup);
+
+      // 6) 0.1版 (Tron 赛博线框风) 专属：六边形边缘轮廓线 (纯青色 0x00d4ff + opacity: 0.9 + AdditiveBlending 发光霓虹质感)
+      const v01TronPrimaryMat = new THREE.LineBasicMaterial({
+        color: 0x00d4ff,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const v01TronSeamMat = new THREE.LineBasicMaterial({
+        color: 0x00d4ff,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const v01TronPlatformWireGroup = new THREE.Group();
+
+      const hexTopY = 0.02 + baseYOffset;
+      const hexBotY = -baseHeight + baseYOffset;
+      const hexR = 4.78;
+      const innerHexR = 4.22;
+      const primaryHexPts: THREE.Vector3[] = [];
+      const seamHexPts: THREE.Vector3[] = [];
+
+      for (let k = 0; k < 6; k++) {
+        const a0 = (k / 6) * Math.PI * 2;
+        const a1 = ((k + 1) / 6) * Math.PI * 2;
+        const x0 = Math.sin(a0) * hexR;
+        const z0 = Math.cos(a0) * hexR;
+        const x1 = Math.sin(a1) * hexR;
+        const z1 = Math.cos(a1) * hexR;
+
+        // 顶部六边形轮廓边 + 底部六边形轮廓边 + 连接底部与顶部的垂直细线表现平台厚度
+        primaryHexPts.push(
+          new THREE.Vector3(x0, hexTopY, z0),
+          new THREE.Vector3(x1, hexTopY, z1),
+          new THREE.Vector3(x0, hexBotY, z0),
+          new THREE.Vector3(x1, hexBotY, z1),
+          new THREE.Vector3(x0, hexBotY, z0),
+          new THREE.Vector3(x0, hexTopY, z0)
+        );
+
+        // 内圈甲板接缝六边形 + 放射对角支撑线 (0x88eeff, opacity: 0.4)
+        const ix0 = Math.sin(a0) * innerHexR;
+        const iz0 = Math.cos(a0) * innerHexR;
+        const ix1 = Math.sin(a1) * innerHexR;
+        const iz1 = Math.cos(a1) * innerHexR;
+        seamHexPts.push(
+          new THREE.Vector3(ix0, hexTopY, iz0),
+          new THREE.Vector3(ix1, hexTopY, iz1),
+          new THREE.Vector3(ix0, hexTopY, iz0),
+          new THREE.Vector3(x0, hexTopY, z0)
+        );
+      }
+
+      v01TronPlatformWireGroup.add(
+        new THREE.LineSegments(
+          new THREE.BufferGeometry().setFromPoints(primaryHexPts),
+          v01TronPrimaryMat
+        ),
+        new THREE.LineSegments(
+          new THREE.BufferGeometry().setFromPoints(seamHexPts),
+          v01TronSeamMat
+        )
+      );
+
+      // 将平台中央核心硬件总成也提取为纯发光线框
+      const centerHwWire = buildTronWireframeFromGroup(
+        v03CenterHardwareGroup,
+        v01TronPrimaryMat,
+        v01TronSeamMat
+      );
+      v01TronPlatformWireGroup.add(centerHwWire);
+      v01TronPlatformWireGroup.visible = false;
+      platformGroup.add(v01TronPlatformWireGroup);
 
       const { mesh: v03FloorProjMesh, redraw: v03FloorProjRedraw } =
         createV03FloorProjectionMesh(this.maxAnisotropy);
@@ -1716,7 +2045,7 @@ export class CyberRangeScene {
         zCfg.position[2] + dirToCenter.z * 4.35
       );
 
-      // 8) 5 台高精度算力设备（支持 v0.1 / v0.2 / v0.3 / v0.4 七大分区专属差异化硬件设备集群）
+      // 8) 5 台高精度算力设备（支持 0.1 赛博线框版 / 0.2 暗黑金属版 七大分区专属差异化硬件设备集群）
       const nodesMap = new Map<string, THREE.Group>();
       const N = zCfg.challenges.length;
       const R = 2.85;
@@ -1759,6 +2088,10 @@ export class CyberRangeScene {
         v02ArmorGroup,
         v03CenterHardwareGroup,
         v04CenterHardwareGroup,
+        v01TronPlatformWireGroup,
+        v01TronPrimaryMat,
+        v01TronSeamMat,
+        solidPlatformMeshes,
         v03FloorProjMesh,
         v03FloorProjRedraw,
         topShaderMat,
@@ -2634,22 +2967,22 @@ export class CyberRangeScene {
     this.v03AttackConsoleGroup.position.set(0, -0.45, -0.8);
 
     const darkChromeMat = new THREE.MeshStandardMaterial({
-      color: 0x2c3b50,
-      metalness: 0.96,
-      roughness: 0.08,
-      envMapIntensity: 2.65,
+      color: 0x445566,
+      metalness: 0.7,
+      roughness: 0.4,
+      envMapIntensity: 1.45,
     });
     const brushedGunmetal = new THREE.MeshStandardMaterial({
-      color: 0x566b86,
-      metalness: 0.94,
-      roughness: 0.15,
-      envMapIntensity: 2.25,
+      color: 0x667788,
+      metalness: 0.7,
+      roughness: 0.4,
+      envMapIntensity: 1.55,
     });
     const charcoalAlloy = new THREE.MeshStandardMaterial({
-      color: 0x344357,
-      metalness: 0.78,
-      roughness: 0.28,
-      envMapIntensity: 1.85,
+      color: 0x4e5d6c,
+      metalness: 0.7,
+      roughness: 0.4,
+      envMapIntensity: 1.4,
     });
 
     // 1) 流线型斜切六边形暗黑镀铬控制台底座 (Dark Chrome Console Base, R = 2.05)
@@ -2727,68 +3060,25 @@ export class CyberRangeScene {
     );
     v03EmitterBase.position.y = 0.04;
 
-    const v03OuterPlasmaMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: this.sharedUniforms.uTime,
-        uCoreWeight: { value: 0.0 },
-      },
-      vertexShader: plasmaBeamVertexShader,
-      fragmentShader: plasmaBeamFragmentShader,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-    });
-    const v03InnerPlasmaMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: this.sharedUniforms.uTime,
-        uCoreWeight: { value: 1.0 },
-      },
-      vertexShader: plasmaBeamVertexShader,
-      fragmentShader: plasmaBeamFragmentShader,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-    });
-
-    const v03OuterBeam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.11, 0.17, 1.35, 24, 1, true),
-      v03OuterPlasmaMat
+    const v03OrbCore = new THREE.Mesh(
+      new THREE.SphereGeometry(0.28, 24, 24),
+      new THREE.MeshBasicMaterial({ color: 0xff5500 })
     );
-    v03OuterBeam.position.y = 0.68;
+    v03OrbCore.position.y = 0.56;
 
-    const v03InnerBeam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.05, 0.075, 1.42, 16, 1, true),
-      v03InnerPlasmaMat
+    const v03OrbAura = new THREE.Mesh(
+      new THREE.SphereGeometry(0.42, 24, 20),
+      new THREE.MeshBasicMaterial({
+        color: 0xff6e1a,
+        transparent: true,
+        opacity: 0.36,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
     );
-    v03InnerBeam.position.y = 0.70;
+    v03OrbAura.position.y = 0.56;
 
-    const v03HoloShellMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: this.sharedUniforms.uTime,
-      },
-      vertexShader: holoShellVertexShader,
-      fragmentShader: holoShellFragmentShader,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const v03ShellGeo = new THREE.CylinderGeometry(0.46, 0.56, 1.16, 8, 1, true);
-    const v03HoloShell = new THREE.Mesh(v03ShellGeo, v03HoloShellMat);
-    v03HoloShell.position.y = 0.58;
-    v03HoloShell.add(
-      new THREE.LineSegments(
-        new THREE.EdgesGeometry(v03ShellGeo),
-        new THREE.LineBasicMaterial({
-          color: 0x00d4ff,
-          transparent: true,
-          opacity: 0.34,
-        })
-      )
-    );
-
-    this.v03OrangeRedCore.add(v03EmitterBase, v03OuterBeam, v03InnerBeam, v03HoloShell);
+    this.v03OrangeRedCore.add(v03EmitterBase, v03OrbCore, v03OrbAura);
     this.v03AttackConsoleGroup.add(this.v03OrangeRedCore);
 
     // 环绕橙红核心的暗黑镀铬聚焦光圈环
@@ -2829,37 +3119,37 @@ export class CyberRangeScene {
     const carbonTex = createV03CarbonFiberTexture(this.maxAnisotropy);
 
     const darkChromeMat = new THREE.MeshStandardMaterial({
-      color: 0x2c3c52,
-      metalness: 0.97,
-      roughness: 0.07,
-      envMapIntensity: 2.85,
+      color: 0x445566,
+      metalness: 0.7,
+      roughness: 0.4,
+      envMapIntensity: 1.45,
     });
     const gunmetalBrushed = new THREE.MeshStandardMaterial({
-      color: 0x566c88,
+      color: 0xc8d2dc,
       map: brushedTex,
       bumpMap: brushedTex,
       bumpScale: 0.011,
-      metalness: 0.94,
-      roughness: 0.14,
-      envMapIntensity: 2.55,
+      metalness: 0.7,
+      roughness: 0.4,
+      envMapIntensity: 1.45,
     });
     const slateSilverMat = new THREE.MeshStandardMaterial({
-      color: 0x8ea6c4,
+      color: 0xe0e6ec,
       map: brushedTex,
       bumpMap: brushedTex,
       bumpScale: 0.009,
-      metalness: 0.96,
-      roughness: 0.11,
-      envMapIntensity: 2.75,
+      metalness: 0.7,
+      roughness: 0.4,
+      envMapIntensity: 1.55,
     });
     const charcoalCarbon = new THREE.MeshStandardMaterial({
-      color: 0x35455a,
+      color: 0xbac4ce,
       map: carbonTex,
       bumpMap: carbonTex,
       bumpScale: 0.014,
-      metalness: 0.84,
-      roughness: 0.22,
-      envMapIntensity: 2.15,
+      metalness: 0.7,
+      roughness: 0.4,
+      envMapIntensity: 1.35,
     });
     const cyanMicroScreenMat = new THREE.MeshBasicMaterial({
       color: 0x0ea5e9,
@@ -3017,8 +3307,7 @@ export class CyberRangeScene {
       this.v05CenterAttackGroup.add(pylon);
     }
 
-    // 6) 中央绝对核心：高强度受控橙红高能等离子光束核心 + 强烈内部轴心辉光 + 八角半透明全息约束罩
-    // ("concentrated energy beam with an intense inner glow, NOT a solid yellow sphere. It is surrounded by a translucent holographic shell")
+    // 6) 中央绝对核心：高能等离子光球（MeshBasicMaterial(0xff5500) + AdditiveBlending 多层透明光晕外壳 + 径向渐变 Sprite 光晕）
     this.v05OrangeRedCore = new THREE.Group();
     this.v05OrangeRedCore.position.set(0, 0.52, 0);
 
@@ -3032,9 +3321,9 @@ export class CyberRangeScene {
     const emitterLens = new THREE.Mesh(
       new THREE.RingGeometry(0.12, 0.36, 8),
       new THREE.MeshBasicMaterial({
-        color: 0xff3b18,
+        color: 0xff5500,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.94,
         side: THREE.DoubleSide,
         depthWrite: false,
       })
@@ -3043,249 +3332,503 @@ export class CyberRangeScene {
     emitterLens.rotation.z = octAngleOffset;
     emitterLens.position.y = 0.18;
 
-    const outerPlasmaMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: this.sharedUniforms.uTime,
-        uCoreWeight: { value: 0.0 },
-      },
-      vertexShader: plasmaBeamVertexShader,
-      fragmentShader: plasmaBeamFragmentShader,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-    });
-    const midPlasmaMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: this.sharedUniforms.uTime,
-        uCoreWeight: { value: 0.65 },
-      },
-      vertexShader: plasmaBeamVertexShader,
-      fragmentShader: plasmaBeamFragmentShader,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-    });
-    const innerPlasmaMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: this.sharedUniforms.uTime,
-        uCoreWeight: { value: 1.0 },
-      },
-      vertexShader: plasmaBeamVertexShader,
-      fragmentShader: plasmaBeamFragmentShader,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-    });
+    const orbCenterY = 0.96; // world y = 0.52 + 0.96 = 1.48
 
-    // 外层深红橙等离子能量鞘 (Collimated vertical sheath)
-    const plasmaOuterBeam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.24, 2.38, 24, 1, true),
-      outerPlasmaMat
-    );
-    plasmaOuterBeam.position.y = 1.24;
-
-    // 中层高密度聚焦橙红能量柱 (Concentrated orange-red plasma column)
-    const plasmaMidBeam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.095, 0.135, 2.48, 24, 1, true),
-      midPlasmaMat
-    );
-    plasmaMidBeam.position.y = 1.28;
-
-    // 内层高强轴心等离子束 (Intense inner glow spine)
-    const plasmaInnerBeam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.038, 0.052, 2.56, 18, 1, true),
-      innerPlasmaMat
-    );
-    plasmaInnerBeam.position.y = 1.32;
-
-    // 极纤细轴心高热激光丝 (Concentrated core filament)
-    const coreFilament = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.014, 0.018, 2.62, 12, 1, true),
+    // 内核高能光球：非实心 AdditiveBlending + MeshBasicMaterial({ color: 0xff5500 })，避免遮挡内部 Sprite 发光中心
+    const plasmaOrbCore = new THREE.Mesh(
+      new THREE.SphereGeometry(0.36, 32, 32),
       new THREE.MeshBasicMaterial({
-        color: 0xffece0,
+        color: 0xff5500,
         transparent: true,
-        opacity: 0.94,
+        opacity: 0.88,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       })
     );
-    coreFilament.position.y = 1.34;
+    plasmaOrbCore.position.y = orbCenterY;
 
-    // 环绕等离子光束核心的半透明八棱柱全息约束舱 (Sleek Octagonal Translucent Holographic Shell — NO spherical ball!)
-    const holoShellMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: this.sharedUniforms.uTime,
-      },
-      vertexShader: holoShellVertexShader,
-      fragmentShader: holoShellFragmentShader,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const holoPrismGeo = new THREE.CylinderGeometry(0.54, 0.64, 2.22, 8, 1, true);
-    const holoContainmentShell = new THREE.Mesh(holoPrismGeo, holoShellMat);
-    holoContainmentShell.position.y = 1.22;
-    holoContainmentShell.rotation.y = octAngleOffset;
-    holoContainmentShell.add(
-      new THREE.LineSegments(
-        new THREE.EdgesGeometry(holoPrismGeo),
-        new THREE.LineBasicMaterial({
-          color: 0x00d4ff,
-          transparent: true,
-          opacity: 0.28,
-        })
-      )
-    );
-
-    // 全息约束罩顶部与底部极细八角青色相位环
-    const topHoloRim = new THREE.Mesh(
-      new THREE.RingGeometry(0.52, 0.555, 8),
+    // 中层 AdditiveBlending 透明等离子气辉外壳
+    const plasmaInnerAura = new THREE.Mesh(
+      new THREE.SphereGeometry(0.56, 32, 24),
       new THREE.MeshBasicMaterial({
-        color: 0x00e5ff,
+        color: 0xff7a24,
         transparent: true,
-        opacity: 0.72,
+        opacity: 0.36,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+    );
+    plasmaInnerAura.position.y = orbCenterY;
+
+    // 外层 AdditiveBlending 大气光晕外壳
+    const plasmaOuterShell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.80, 32, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0xff4400,
+        transparent: true,
+        opacity: 0.16,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+    );
+    plasmaOuterShell.position.y = orbCenterY;
+    this.v05PlasmaOuterShell = plasmaOuterShell;
+
+    // 径向渐变发光贴图 Sprite（内层白金等离子核心 + 外层大范围橙红光晕，完全消除“咸蛋黄”实心感）
+    const plasmaHotCoreTex = this.createRadialGlowTexture([
+      [0.0, 'rgba(255, 255, 240, 1.0)'],
+      [0.22, 'rgba(255, 210, 130, 0.98)'],
+      [0.48, 'rgba(255, 95, 20, 0.62)'],
+      [0.82, 'rgba(255, 50, 0, 0.14)'],
+      [1.0, 'rgba(255, 30, 0, 0.0)'],
+    ]);
+    const plasmaHotCoreSprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: plasmaHotCoreTex,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.98,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+    );
+    plasmaHotCoreSprite.position.y = orbCenterY;
+    plasmaHotCoreSprite.scale.set(2.05, 2.05, 1);
+
+    const plasmaGlowTex = this.createRadialGlowTexture([
+      [0.0, 'rgba(255, 220, 150, 0.95)'],
+      [0.20, 'rgba(255, 105, 25, 0.85)'],
+      [0.45, 'rgba(255, 65, 0, 0.45)'],
+      [0.75, 'rgba(255, 30, 0, 0.14)'],
+      [1.0, 'rgba(255, 20, 0, 0.0)'],
+    ]);
+    const plasmaHaloSprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: plasmaGlowTex,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+    );
+    plasmaHaloSprite.position.y = orbCenterY;
+    plasmaHaloSprite.scale.set(4.8, 4.8, 1);
+    this.v05PlasmaHaloSprite = plasmaHaloSprite;
+
+    // 底部接驳光柱（连接发射井口与悬浮高能光球）
+    const nozzleColumn = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.24, 0.72, 16, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0xff5500,
+        transparent: true,
+        opacity: 0.36,
+        blending: THREE.AdditiveBlending,
         side: THREE.DoubleSide,
         depthWrite: false,
       })
     );
-    topHoloRim.rotation.x = -Math.PI / 2;
-    topHoloRim.rotation.z = octAngleOffset;
-    topHoloRim.position.y = 2.33;
-
-    const botHoloRim = new THREE.Mesh(
-      new THREE.RingGeometry(0.62, 0.655, 8),
-      new THREE.MeshBasicMaterial({
-        color: 0x00d4ff,
-        transparent: true,
-        opacity: 0.68,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      })
-    );
-    botHoloRim.rotation.x = -Math.PI / 2;
-    botHoloRim.rotation.z = octAngleOffset;
-    botHoloRim.position.y = 0.12;
+    nozzleColumn.position.y = 0.52;
 
     this.v05OrangeRedCore.add(
       emitterNozzle,
       emitterLens,
-      plasmaOuterBeam,
-      plasmaMidBeam,
-      plasmaInnerBeam,
-      coreFilament,
-      holoContainmentShell,
-      topHoloRim,
-      botHoloRim
+      nozzleColumn,
+      plasmaOrbCore,
+      plasmaInnerAura,
+      plasmaOuterShell,
+      plasmaHotCoreSprite,
+      plasmaHaloSprite
     );
     this.v05CenterAttackGroup.add(this.v05OrangeRedCore);
 
-    // 上下水平准直磁约束环（保持水平不交叉，绝不形成球形笼子，凸显垂直集束能量柱）
-    this.v05ConsoleGimbalA.position.set(0, 0.78, 0);
+    // 环绕高能等离子光球的双层八角磁约束陀螺环（外扩尺寸不遮挡发光核）
+    this.v05ConsoleGimbalA.position.set(0, 1.48, 0);
     const gimbalOctMesh = new THREE.Mesh(
-      new THREE.TorusGeometry(0.76, 0.028, 10, 8),
+      new THREE.TorusGeometry(1.04, 0.026, 10, 8),
       darkChromeMat
     );
-    gimbalOctMesh.rotation.x = Math.PI / 2;
+    gimbalOctMesh.rotation.x = Math.PI * 0.42;
     const gimbalOctRedEdge = new THREE.Mesh(
-      new THREE.TorusGeometry(0.72, 0.011, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xff3b18 })
+      new THREE.TorusGeometry(1.00, 0.012, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff5500 })
     );
-    gimbalOctRedEdge.rotation.x = Math.PI / 2;
+    gimbalOctRedEdge.rotation.x = Math.PI * 0.42;
     this.v05ConsoleGimbalA.add(gimbalOctMesh, gimbalOctRedEdge);
 
-    this.v05ConsoleGimbalB.position.set(0, 2.48, 0);
+    this.v05ConsoleGimbalB.position.set(0, 1.48, 0);
     const gimbalOuterMesh = new THREE.Mesh(
-      new THREE.TorusGeometry(0.62, 0.024, 10, 8),
+      new THREE.TorusGeometry(1.24, 0.022, 10, 8),
       slateSilverMat
     );
-    gimbalOuterMesh.rotation.x = Math.PI / 2;
+    gimbalOuterMesh.rotation.x = -Math.PI * 0.36;
     const gimbalTopCyanEdge = new THREE.Mesh(
-      new THREE.TorusGeometry(0.58, 0.01, 8, 8),
+      new THREE.TorusGeometry(1.20, 0.011, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0x00d4ff })
     );
-    gimbalTopCyanEdge.rotation.x = Math.PI / 2;
+    gimbalTopCyanEdge.rotation.x = -Math.PI * 0.36;
     this.v05ConsoleGimbalB.add(gimbalOuterMesh, gimbalTopCyanEdge);
 
     this.v05CenterAttackGroup.add(this.v05ConsoleGimbalA, this.v05ConsoleGimbalB);
   }
 
   /**
-   * 切换沙盘版本（仅保留 0.3 与 0.5 版本）：
-   * - '0.3': 暗黑钛金版（深空午夜蓝体积雾 + 暗黑镀铬八角中央指挥台外覆钛金冷却环廊 + 高能橙红等离子集束核心 + 半透明全息罩 + 枪铁灰/暗板岩银机柜）
-   * - '0.5': 中央突击版（深空午夜蓝体积雾 + 精悍八角暗黑镀铬中央攻击指挥台 + 高能橙红等离子集束核心 + 半透明全息罩 + 纤细锐利红激光）
+   * 七-C (0.1版 赛博线框风 / Tron 专属)：
+   * - 中心红球：体积缩小 30% (半径 0.30)，纯正亮红色 0xff1100，外围不套大透明发光壳，收敛过曝
+   * - 线框颜色与亮度：0x00d4ff, opacity: 0.9, blending: THREE.AdditiveBlending
+   */
+  private buildV01TronCenterAttackAndLinks(zonesData: ZoneConfig[]) {
+    this.v01TronPrimaryLineMat = new THREE.LineBasicMaterial({
+      color: 0x00d4ff,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.v01TronSeamLineMat = new THREE.LineBasicMaterial({
+      color: 0x00d4ff,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    // 纯亮红色 0xff1100 线框环材质
+    this.v01TronRedCoreMat = new THREE.LineBasicMaterial({
+      color: 0xff1100,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+
+    this.v01TronAttackCoreGroup.position.set(0, 0, 0);
+
+    // 1) 中央八边形纯线框基座（纯青色 0x00d4ff + AdditiveBlending）
+    const octPtsPrimary: THREE.Vector3[] = [];
+    const octPtsSeam: THREE.Vector3[] = [];
+    const octOffset = Math.PI / 8;
+    const outerR = 4.25;
+    const midR = 3.12;
+    const innerR = 1.95;
+    const topY = 0.28;
+    const botY = -0.45;
+
+    for (let i = 0; i < 8; i++) {
+      const a0 = (i / 8) * Math.PI * 2 + octOffset;
+      const a1 = ((i + 1) / 8) * Math.PI * 2 + octOffset;
+
+      const ox0 = Math.sin(a0) * outerR;
+      const oz0 = Math.cos(a0) * outerR;
+      const ox1 = Math.sin(a1) * outerR;
+      const oz1 = Math.cos(a1) * outerR;
+
+      const mx0 = Math.sin(a0) * midR;
+      const mz0 = Math.cos(a0) * midR;
+      const mx1 = Math.sin(a1) * midR;
+      const mz1 = Math.cos(a1) * midR;
+
+      const ix0 = Math.sin(a0) * innerR;
+      const iz0 = Math.cos(a0) * innerR;
+      const ix1 = Math.sin(a1) * innerR;
+      const iz1 = Math.cos(a1) * innerR;
+
+      // 外八角上下轮廓 + 垂直厚度线
+      octPtsPrimary.push(
+        new THREE.Vector3(ox0, 0.02, oz0),
+        new THREE.Vector3(ox1, 0.02, oz1),
+        new THREE.Vector3(ox0, botY, oz0),
+        new THREE.Vector3(ox1, botY, oz1),
+        new THREE.Vector3(ox0, botY, oz0),
+        new THREE.Vector3(ox0, 0.02, oz0),
+        new THREE.Vector3(ix0, topY, iz0),
+        new THREE.Vector3(ix1, topY, iz1)
+      );
+
+      // 中环接缝与放射肋线
+      octPtsSeam.push(
+        new THREE.Vector3(mx0, 0.14, mz0),
+        new THREE.Vector3(mx1, 0.14, mz1),
+        new THREE.Vector3(ox0, 0.02, oz0),
+        new THREE.Vector3(ix0, topY, iz0)
+      );
+    }
+
+    this.v01TronAttackCoreGroup.add(
+      new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(octPtsPrimary),
+        this.v01TronPrimaryLineMat
+      ),
+      new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(octPtsSeam),
+        this.v01TronSeamLineMat
+      )
+    );
+
+    // 2) 中心红球（体积缩小 30% 至半径 0.30，纯亮红色 0xff1100，外围不套太大的透明发光壳）
+    const coreHub = new THREE.Group();
+    coreHub.position.set(0, 1.48, 0);
+    this.v01TronAttackCoreGroup.add(coreHub);
+
+    this.v01TronRedOrbCoreMat = new THREE.MeshBasicMaterial({
+      color: 0xff1100,
+      transparent: true,
+      opacity: 0,
+    });
+    const solidRedSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(0.30, 32, 32),
+      this.v01TronRedOrbCoreMat
+    );
+    coreHub.add(solidRedSphere);
+
+    // 极贴合的微薄边缘层（半径仅 0.33，不套大透明发光壳）
+    this.v01TronRedOrbAuraMat = new THREE.MeshBasicMaterial({
+      color: 0xff1100,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const solidRedAura = new THREE.Mesh(
+      new THREE.SphereGeometry(0.33, 24, 20),
+      this.v01TronRedOrbAuraMat
+    );
+    coreHub.add(solidRedAura);
+
+    const redCoreGlowTex = this.createRadialGlowTexture([
+      [0.0, 'rgba(255, 60, 20, 0.65)'],
+      [0.45, 'rgba(255, 17, 0, 0.25)'],
+      [1.0, 'rgba(0, 0, 0, 0.0)'],
+    ]);
+    this.v01TronRedOrbSpriteMat = new THREE.SpriteMaterial({
+      map: redCoreGlowTex,
+      color: 0xff1100,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const redCoreGlowSprite = new THREE.Sprite(this.v01TronRedOrbSpriteMat);
+    redCoreGlowSprite.scale.set(0.85, 0.85, 1);
+    coreHub.add(redCoreGlowSprite);
+
+    // 环绕红球的紧凑旋转红色线框环（随红球同步缩小 30%）
+    const torusSpecs = [
+      { radius: 0.44, tube: 0.022, radialSegs: 6, tubularSegs: 24, rx: -0.65, ry: 0.45, rz: 0.0 },
+      { radius: 0.58, tube: 0.024, radialSegs: 8, tubularSegs: 28, rx: 1.12, ry: -0.3, rz: 0.55 },
+      { radius: 0.72, tube: 0.024, radialSegs: 8, tubularSegs: 32, rx: -0.42, ry: 0.85, rz: -0.38 },
+      { radius: 0.86, tube: 0.022, radialSegs: 6, tubularSegs: 36, rx: Math.PI * 0.44, ry: 0.15, rz: 0.18 },
+    ];
+
+    this.v01TronRedTorusRings = [];
+    torusSpecs.forEach((spec) => {
+      const torusGeo = new THREE.TorusGeometry(
+        spec.radius,
+        spec.tube,
+        spec.radialSegs,
+        spec.tubularSegs
+      );
+      const wireGeo = new THREE.WireframeGeometry(torusGeo);
+      const ringLines = new THREE.LineSegments(wireGeo, this.v01TronRedCoreMat);
+      ringLines.rotation.set(spec.rx, spec.ry, spec.rz);
+      coreHub.add(ringLines);
+      this.v01TronRedTorusRings.push(ringLines);
+    });
+
+    this.v01TronAttackCoreGroup.visible = false;
+
+    // 3) 平台与中心直连细实线（亮青色 0x00d4ff + AdditiveBlending，直接连接 7 座六边形平台与中央核心）
+    const directLinkPts: THREE.Vector3[] = [];
+    const perimeterLinkPts: THREE.Vector3[] = [];
+
+    zonesData.forEach((z, idx) => {
+      const targetPos = new THREE.Vector3(z.position[0], 0.0, z.position[2]);
+      const dir = targetPos.clone().setY(0).normalize();
+      const startPt = dir.clone().multiplyScalar(4.25).setY(0.02);
+      const endPt = targetPos.clone().addScaledVector(dir, -4.78).setY(0.02);
+
+      // 主直连细实线 (0x00d4ff)
+      directLinkPts.push(startPt, endPt);
+
+      // 双侧极细平行辅助基准线 (0x00d4ff)
+      const ortho = new THREE.Vector3(-dir.z, 0, dir.x);
+      [-0.12, 0.12].forEach((offset) => {
+        perimeterLinkPts.push(
+          startPt.clone().addScaledVector(ortho, offset),
+          endPt.clone().addScaledVector(ortho, offset)
+        );
+      });
+
+      // 相邻平台之间的外环拓扑细实线
+      const nextZ = zonesData[(idx + 1) % zonesData.length];
+      const nextPos = new THREE.Vector3(nextZ.position[0], 0.02, nextZ.position[2]);
+      const curPos = new THREE.Vector3(z.position[0], 0.02, z.position[2]);
+      const linkDir = nextPos.clone().sub(curPos).normalize();
+      const lStart = curPos.clone().addScaledVector(linkDir, 4.78);
+      const lEnd = nextPos.clone().addScaledVector(linkDir, -4.78);
+      perimeterLinkPts.push(lStart, lEnd);
+    });
+
+    this.v01TronLinksGroup.add(
+      new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(directLinkPts),
+        this.v01TronPrimaryLineMat
+      ),
+      new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints(perimeterLinkPts),
+        this.v01TronSeamLineMat
+      )
+    );
+    this.v01TronLinksGroup.visible = false;
+  }
+
+  /**
+   * 根据 wireframeMix (0 = 0.2版 暗黑写实金属, 1 = 0.1版 赛博线框风) 平滑更新材质透明度、灯光、阴影与后处理
+   * 过渡时长约 0.8s，不销毁重建模型，切换至 0.1版 后彻底关闭物理光与阴影渲染 (shadowMap.enabled = false)
+   */
+  private applyWireframeTransitionMix(mix: number) {
+    const m = Math.max(0, Math.min(1, mix));
+    this.wireframeMix = m;
+    const solidAlpha = 1.0 - m;
+    const isFullWireframe = m >= 0.995;
+
+    this.sharedUniforms.uWireframeMode.value = m;
+
+    // 1) 背景色 (0x020408 -> 0x020610) 与暗蓝色雾效 FogExp2(0x020610, 0.015)
+    const bgCol = new THREE.Color(0x020408).lerp(new THREE.Color(0x020610), m);
+    this.scene.background = bgCol;
+    const fogDensity = THREE.MathUtils.lerp(0.005, 0.015, m);
+    this.scene.fog = new THREE.FogExp2(bgCol.getHex(), fogDensity);
+    this.scene.environmentIntensity = 1.25 * solidAlpha;
+
+    // 2) 性能红利：一旦切入 0.1版 关闭阴影渲染与物理光照
+    this.renderer.shadowMap.enabled = m < 0.5;
+    this.ambientLight.intensity = 0.35 * solidAlpha;
+    this.hemiLight.intensity = 1.0 * solidAlpha;
+    this.keyLight.intensity = 1.5 * solidAlpha;
+    this.rimLight.intensity = 0.45 * solidAlpha;
+    this.backRightRimLight.intensity = 0.35 * solidAlpha;
+    this.fillLight.intensity = 0.2 * solidAlpha;
+    this.consoleRedLight.intensity = 1.35 * solidAlpha;
+    this.consoleRedLight.visible = solidAlpha > 0.01;
+
+    for (let i = 0; i < this.zonePointLights.length; i++) {
+      this.zonePointLights[i].intensity = 0.26 * solidAlpha;
+    }
+
+    // 3) UnrealBloomPass 后处理：0.1版严格设为 strength = 1.0, radius = 0.3, threshold = 0.6（只有线框和红球发光，背景与暗青网格不泛白）
+    if (this.bloomPass) {
+      this.bloomPass.strength = THREE.MathUtils.lerp(0.6, 1.0, m);
+      this.bloomPass.radius = THREE.MathUtils.lerp(0.2, 0.3, m);
+      this.bloomPass.threshold = THREE.MathUtils.lerp(0.85, 0.6, m);
+    }
+
+    // 4) 地面六边形网格保留并切换为 0x003355 若隐若现暗青线条（由 groundDiscMesh 的 uWireframeMode 控制）
+    this.backingMat.color.copy(bgCol);
+    if (this.mirrorReflector) {
+      this.mirrorReflector.visible = !this.useSoftwarePacing && m < 0.25;
+    }
+    if (this.skyDomeMesh) {
+      this.skyDomeMesh.visible = !isFullWireframe;
+    }
+    if (this.groundDiscMesh) {
+      this.groundDiscMesh.visible = true;
+    }
+    if (this.outerRimMesh) {
+      this.outerRimMesh.visible = !isFullWireframe;
+    }
+
+    this.v01TronGroundGroup.visible = m > 0.005;
+    this.v01TronGroundPrimaryMat.opacity = 0.35 * m;
+    this.v01TronGroundSeamMat.opacity = 0.20 * m;
+
+    // 5) 中央攻击区与连接线切换：0x00d4ff, opacity: 0.9, AdditiveBlending 线框 + 0xff1100 缩小 30% 的中心红球
+    this.v03CoreGroup.visible = false;
+    this.v05CenterAttackGroup.visible = !isFullWireframe;
+    this.v03PipesGroup.visible = !isFullWireframe;
+
+    this.v01TronAttackCoreGroup.visible = m > 0.005;
+    this.v01TronLinksGroup.visible = m > 0.005;
+    this.v01TronPrimaryLineMat.opacity = 0.9 * m;
+    this.v01TronSeamLineMat.opacity = 0.45 * m;
+    this.v01TronRedCoreMat.opacity = 0.85 * m;
+    this.v01TronRedOrbCoreMat.opacity = 0.95 * m;
+    this.v01TronRedOrbAuraMat.opacity = 0.18 * m;
+    this.v01TronRedOrbSpriteMat.opacity = 0.15 * m;
+
+    // 6) 七大六边形底座平台与 35 台算力机柜模型溶解过渡（线框 0x00d4ff, opacity: 0.9 + AdditiveBlending）
+    this.hullDarkMat.transparent = m > 0.005;
+    this.hullDarkMat.opacity = solidAlpha;
+    this.rimSilverMat.transparent = m > 0.005;
+    this.rimSilverMat.opacity = solidAlpha;
+
+    this.zones.forEach((zone) => {
+      for (let i = 0; i < zone.solidPlatformMeshes.length; i++) {
+        zone.solidPlatformMeshes[i].visible = !isFullWireframe;
+      }
+      zone.v03CenterHardwareGroup.visible = !isFullWireframe;
+      zone.v03FloorProjMesh.visible = !isFullWireframe;
+
+      zone.v01TronPlatformWireGroup.visible = m > 0.005;
+      zone.v01TronPrimaryMat.opacity = 0.9 * m;
+      zone.v01TronSeamMat.opacity = 0.45 * m;
+
+      zone.nodes.forEach((node) => {
+        (node.userData as ChallengeNodeUserData).setWireframeMix(m);
+      });
+    });
+  }
+
+  /**
+   * 切换沙盘版本（0.1版 赛博线框风 vs 0.2版 暗黑金属中央突击版）：
+   * - '0.3' (UI显示为 0.1版): 赛博线框风 / Tron 风格（0x00d4ff + opacity 0.9 + AdditiveBlending 霓虹灯管线框 + Bloom(1.0, 0.3, 0.6) + 0xff1100 精巧红核 + 0x003355 暗青六边形地面网格 + FogExp2(0x020610, 0.015)）
+   * - '0.5' (UI显示为 0.2版): 暗黑写实金属中央突击版（冷蓝雾效 + 八角暗黑镀铬中央攻击指挥台 + 高能等离子光球 + 纤细锐利红激光）
    */
   public setVersion(version: SandboxVersion, immediateCamera = false) {
     this.currentVersion = version;
-    const isV03 = version === '0.3';
+    const isV01Tron = version === '0.3';
     const isV05 = version === '0.5';
 
     this.sharedUniforms.uDarkMode.value = 1.0;
     this.sharedUniforms.uFuturisticMode.value = 0.0;
 
-    // 1) 深空午夜蓝背景 + 电影级湿润体积雾 (Deep midnight blue background with cinematic volumetric fog adding depth & moisture)
-    this.scene.background = new THREE.Color(0x040b1a);
-    this.scene.fog = new THREE.FogExp2(
-      0x051024,
-      this.currentCameraMode === 'panorama' ? 0.0024 : 0.0056
-    );
-    this.scene.environmentIntensity = 1.48;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.0;
     this.camera.fov = 24;
     this.camera.updateProjectionMatrix();
 
-    if (this.bloomPass) {
-      // Subtle, controlled bloom effects with a high threshold — soft halo, NO harsh white glare or blindness
-      this.bloomPass.strength = 0.22;
-      this.bloomPass.radius = 0.32;
-      this.bloomPass.threshold = 0.88;
-    }
     if (this.vignettePass) {
       this.vignettePass.uniforms.uMacroDof.value = 0.0;
     }
 
-    // Soft, diffused ambient lighting with a faint hemisphere light + strong rim lighting on gunmetal/slate silver racks
-    this.ambientLight.color.setHex(0x325482);
-    this.ambientLight.intensity = 1.36;
-    this.hemiLight.color.setHex(0x64a0e8);
-    this.hemiLight.groundColor.setHex(0x071224);
-    this.hemiLight.intensity = 0.48;
-    this.keyLight.color.setHex(0xdbeafe);
-    this.keyLight.intensity = 1.42;
-    this.rimLight.color.setHex(0x38bdf8);
-    this.rimLight.intensity = 2.45;
-    this.backRightRimLight.color.setHex(0x00e5ff);
-    this.backRightRimLight.intensity = 2.15;
+    // 预设 0.2版 物理光照基准色彩与位置（强度由 applyWireframeTransitionMix 控制）
+    this.ambientLight.color.setHex(0x94a3b8);
+    this.hemiLight.color.setHex(0xccddff);
+    this.hemiLight.groundColor.setHex(0x050810);
+    this.keyLight.color.setHex(0xffffff);
+    this.keyLight.position.set(-22, 34, 24);
+    this.rimLight.color.setHex(0xdbeafe);
+    this.backRightRimLight.color.setHex(0x94a3b8);
     this.backRightRimLight.visible = true;
-    this.fillLight.color.setHex(0x6492ca);
-    this.fillLight.intensity = 1.18;
+    this.fillLight.color.setHex(0x94a3b8);
+    this.fillLight.position.set(18, 20, 22);
 
-    this.consoleRedLight.position.set(0, 1.85, 0);
-    this.consoleRedLight.intensity = 1.38;
-    this.consoleRedLight.distance = 10.5;
-    this.consoleRedLight.visible = true;
+    this.consoleRedLight.position.set(0, 1.55, 0);
+    this.consoleRedLight.distance = 11.0;
 
-    // Seven hexagonal platforms made of dark grey matte alloy with beveled slate silver edges
-    this.hullDarkMat.color.setHex(0x283649);
-    this.hullDarkMat.metalness = 0.66;
-    this.hullDarkMat.roughness = 0.40;
-    this.hullDarkMat.transparent = false;
-    this.hullDarkMat.opacity = 1.0;
+    // Desaturated dark grey-silver metallic platforms (0x445566 / 0x667788, metalness 0.7, roughness 0.4)
+    this.hullDarkMat.color.setHex(0x445566);
+    this.hullDarkMat.metalness = 0.7;
+    this.hullDarkMat.roughness = 0.4;
+    this.hullDarkMat.envMapIntensity = 1.45;
     this.hullDarkMat.needsUpdate = true;
 
-    this.rimSilverMat.color.setHex(0x6c86a6);
-    this.rimSilverMat.metalness = 0.92;
-    this.rimSilverMat.roughness = 0.16;
-    this.backingMat.color.setHex(0x020714);
-    this.outerRimMat.color.setHex(0x3a5478);
+    this.rimSilverMat.color.setHex(0x667788);
+    this.rimSilverMat.metalness = 0.7;
+    this.rimSilverMat.roughness = 0.4;
+    this.rimSilverMat.envMapIntensity = 1.55;
+    this.outerRimMat.color.setHex(0x445566);
+    this.outerRimMat.metalness = 0.7;
+    this.outerRimMat.roughness = 0.4;
     this.starField.visible = false;
-
-    // Highly polished dark mirror glass floor active across both 0.3 & 0.5
-    if (this.mirrorReflector) {
-      this.mirrorReflector.visible = !this.useSoftwarePacing;
-    }
 
     for (let i = this.floatTexts.length - 1; i >= 0; i--) {
       const ft = this.floatTexts[i];
@@ -3296,13 +3839,7 @@ export class CyberRangeScene {
     }
     this.floatTexts = [];
 
-    // 2) 中央八角暗黑镀铬攻击台与高能橙红等离子光束核心在 0.3 与 0.5 中均位于绝对中心 (0, 0, 0)
-    // 0.3 额外展示外围暗黑钛金属重装冷却环廊与精密基座，0.5 为纯粹八角突击指挥台
-    this.v03CoreGroup.visible = isV03;
-    this.v05CenterAttackGroup.visible = true;
-    this.v03PipesGroup.visible = true;
-
-    // 3) 七大六边形平台外观、全息中文标牌、地面投影同步更新
+    // 七大六边形平台外观、全息中文标牌、地面投影同步更新
     let zIdx = 0;
     this.zones.forEach((zone) => {
       const zCfg = zone.config;
@@ -3313,7 +3850,6 @@ export class CyberRangeScene {
       if (pl) {
         pl.position.set(pos[0], 3.2 + pos[1], pos[2]);
         pl.color.setHex(0x38bdf8);
-        pl.intensity = 0.26;
       }
 
       const dirToCenter = new THREE.Vector3(-pos[0], 0, -pos[2]).normalize();
@@ -3323,12 +3859,10 @@ export class CyberRangeScene {
         pos[2] + dirToCenter.z * 4.35
       );
 
-      zone.v03CenterHardwareGroup.visible = true;
-      zone.v03FloorProjMesh.visible = true;
       zone.v03LabelSprite.visible = true;
 
-      zone.edgeNeonMat.color.setHex(0x00c8f0);
-      zone.edgeNeonMat.opacity = 0.62;
+      zone.edgeNeonMat.color.setHex(0x00d4ff);
+      zone.edgeNeonMat.opacity = isV01Tron ? 0.85 : 0.62;
       zone.topShaderMat.uniforms.uColor.value.setHex(0x00c8f0);
       zone.underBeamMat.color.setHex(0x0284c7);
       zone.underBeamMat.opacity = 0.0;
@@ -3340,7 +3874,13 @@ export class CyberRangeScene {
       this.refreshZoneTelemetry(zone, false);
     });
 
-    // 4) 重建当前活跃激光束轨迹，从正中心高能橙红等离子光束核心向外发射纤细锐利的红色激光束
+    // 目标线框混合因子：0.1版 ('0.3') -> 1.0，0.2版 ('0.5') -> 0.0
+    this.targetWireframeMix = isV01Tron ? 1.0 : 0.0;
+    if (immediateCamera) {
+      this.applyWireframeTransitionMix(this.targetWireframeMix);
+    }
+
+    // 4) 重建当前活跃激光束轨迹，从正中心向外发射刺眼亮红色细直激光线
     const snapshot = this.activeBeams.map((b) => ({
       challengeId: b.challengeId,
       teamName: b.teamName,
@@ -3436,10 +3976,10 @@ export class CyberRangeScene {
     targetDevice.getWorldPosition(worldTarget);
     worldTarget.y += 1.35;
 
-    // 从绝对中心八角暗黑镀铬攻击台的橙红高能等离子光束核心 (0, 1.52, 0) 向外周七大平台放射纤细锐利的红色激光束
-    const centerRedCoreOrigin = new THREE.Vector3(0, 1.52, 0);
+    // 0.1版：中心向外发射的激光线保持细直（极低弧度），0.2版保持优雅微弧轨迹
+    const centerRedCoreOrigin = new THREE.Vector3(0, 1.48, 0);
     const mid = centerRedCoreOrigin.clone().lerp(worldTarget, 0.5);
-    mid.y += 1.62;
+    mid.y += this.currentVersion === '0.3' ? 0.35 : 1.62;
     return new THREE.QuadraticBezierCurve3(centerRedCoreOrigin, mid, worldTarget);
   }
 
@@ -3458,17 +3998,18 @@ export class CyberRangeScene {
       this.activeBeams.splice(existingIdx, 1);
     }
 
-    // 极纤细、高锐度的红色激光束 (Thin, sharp red laser beams, radius = 0.016, color = 0xff2614)
-    const beamRadius = 0.016;
-    const beamColorHex = 0xff2614;
+    // 0.1版采用亮红色 0xff1100 与适度强度 1.15；0.2版保持 0xff2614 与 1.32
+    const isV01Tron = this.currentVersion === '0.3';
+    const beamRadius = isV01Tron ? 0.013 : 0.016;
+    const beamColorHex = isV01Tron ? 0xff1100 : 0xff2614;
 
     const tubeGeo = new THREE.TubeGeometry(opts.curve, 96, beamRadius, 6, false);
     const beamMat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: this.sharedUniforms.uTime,
         uProgress: { value: opts.instantArrive ? 1.0 : 0.0 },
-        uIntensity: { value: 1.32 },
-        uOpacity: { value: opts.instantArrive ? 0.88 : 0.95 },
+        uIntensity: { value: isV01Tron ? 1.15 : 1.32 },
+        uOpacity: { value: opts.instantArrive ? 0.94 : 0.98 },
         uColor: { value: new THREE.Color(beamColorHex) },
       },
       vertexShader: attackBeamVertexShader,
@@ -3481,7 +4022,7 @@ export class CyberRangeScene {
 
     const probeMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.085, 12, 12),
-      new THREE.MeshBasicMaterial({ color: 0xff4d38 })
+      new THREE.MeshBasicMaterial({ color: 0xff3300 })
     );
     const startPt = opts.curve.getPointAt(opts.instantArrive ? 1 : 0);
     probeMesh.position.copy(startPt);
@@ -4003,7 +4544,7 @@ export class CyberRangeScene {
       solvedCount,
       zone.config.challenges.length,
       threatsCount,
-      true
+      this.currentVersion === '0.3'
     );
     zone.v03FloorProjRedraw(
       solvedCount,
@@ -4065,17 +4606,16 @@ export class CyberRangeScene {
       };
     }
 
-    // 默认视角与回中视角：场景居中，视角拉近放大至完整展示前景单个分区（全部分区设备），
-    // 俯仰高度处于平视与俯视之间（约 18.5° 接近平视的倾斜视角），同时无遮挡呈现中央攻击核心区域
+    // 默认视角与回中视角：视角再拉远一些，在 1920x1080 下清晰展示前景分区所有设备、中央高能光球与环周流光管道
     const azimuthRad = (23 * Math.PI) / 180;
     const sinA = Math.sin(azimuthRad);
     const cosA = Math.cos(azimuthRad);
 
     const target = isV05
-      ? new THREE.Vector3(3.1, -1.05, 5.6)
-      : new THREE.Vector3(3.0, -1.05, 5.8);
-    const horizR = (isV05 ? 31.2 : 32.4) * ovScale;
-    const heightY = (isV05 ? 10.5 : 10.9) * ovScale;
+      ? new THREE.Vector3(2.1, -0.75, 3.6)
+      : new THREE.Vector3(2.1, -0.75, 3.8);
+    const horizR = (isV05 ? 41.2 : 42.2) * ovScale;
+    const heightY = (isV05 ? 14.0 : 14.4) * ovScale;
     return {
       endPos: new THREE.Vector3(
         target.x + sinA * horizR,
@@ -4093,10 +4633,10 @@ export class CyberRangeScene {
       this.attackFollowAnim = null;
       this.onAttackFollowBanner?.(null);
     }
-    this.scene.fog = new THREE.FogExp2(
-      0x051024,
-      mode === 'panorama' ? 0.0024 : 0.0056
-    );
+    this.scene.fog =
+      this.currentVersion === '0.3'
+        ? new THREE.FogExp2(0x020610, 0.015)
+        : new THREE.FogExp2(0x020408, 0.005);
     const { endPos, endTarget } = this.getDefaultOverviewPose(mode);
     this.startCameraTransition(endPos, endTarget, this.autoRotateEnabled, 1.2);
   }
@@ -4120,7 +4660,7 @@ export class CyberRangeScene {
    */
   public setAutoRotateEnabled(enabled: boolean) {
     this.autoRotateEnabled = enabled;
-    this.controls.autoRotateSpeed = 0.8;
+    this.controls.autoRotateSpeed = 1.6;
     if (this.autoRotateResumeTimer !== null) {
       clearTimeout(this.autoRotateResumeTimer);
       this.autoRotateResumeTimer = null;
@@ -4210,8 +4750,8 @@ export class CyberRangeScene {
     node.getWorldPosition(worldTarget);
     const devicePos = worldTarget.clone().setY(worldTarget.y + 1.15);
 
-    // 0.3 与 0.5 攻击激光起点均位于绝对中心高能橙红等离子束核心 (0, 1.52, 0)
-    const attackOrigin = new THREE.Vector3(0, 1.52, 0);
+    // 0.3 与 0.5 攻击激光起点均位于绝对中心高能橙红等离子光球 (0, 1.48, 0)
+    const attackOrigin = new THREE.Vector3(0, 1.48, 0);
     const mid = attackOrigin.clone().lerp(devicePos, 0.5);
     mid.y += 1.85;
 
@@ -4542,9 +5082,9 @@ export class CyberRangeScene {
 
       const renderMs = this.renderSingleFrame();
 
-      if (!this.useSoftwarePacing && (renderMs > 450 || renderMs > 120)) {
+      if (!this.useSoftwarePacing && (renderMs > 450 || renderMs > 280)) {
         this.slowFrameStreak += renderMs > 450 ? 2 : 1;
-        if (this.slowFrameStreak >= 2) {
+        if (this.slowFrameStreak >= 4) {
           // Automatic graceful step-down for throttled/integrated/emulated GPUs
           this.useSoftwarePacing = true;
           this.controls.enableDamping = false;
@@ -4588,30 +5128,86 @@ export class CyberRangeScene {
       this.starField.rotation.y += dt * 0.008;
     }
 
-      // v0.3 外圈冷却环与 v0.5 中央高能橙红等离子集束核心及准直环动画
-      if (this.v03CoreGimbalA && this.v03CoreGimbalB) {
-        this.v03CoreGimbalA.rotation.y += dt * 0.22;
-        this.v03CoreGimbalB.rotation.y -= dt * 0.18;
+    // 0.8s 平滑溶解过渡动画：从 0.2版 实体金属溶解至 0.1版 赛博线框（反之亦然）
+    if (Math.abs(this.wireframeMix - this.targetWireframeMix) > 0.0005) {
+      const step = dt / 0.8;
+      if (this.wireframeMix < this.targetWireframeMix) {
+        this.wireframeMix = Math.min(this.targetWireframeMix, this.wireframeMix + step);
+      } else {
+        this.wireframeMix = Math.max(this.targetWireframeMix, this.wireframeMix - step);
       }
+      this.applyWireframeTransitionMix(this.wireframeMix);
+    }
 
-      if (this.v05OrangeRedCore && this.v05ConsoleGimbalA && this.v05ConsoleGimbalB) {
-        const v05RedPulse = 1.0 + Math.sin(elapsed * 4.2) * 0.045;
-        this.v05OrangeRedCore.scale.set(v05RedPulse, 1.0, v05RedPulse);
-        this.v05ConsoleGimbalA.rotation.y += dt * 0.36;
-        this.v05ConsoleGimbalB.rotation.y -= dt * 0.28;
+    // 0.1版 (Tron 赛博线框风) 中央交织红色线框环旋转动画与地面雷达扫描线旋转
+    if (this.wireframeMix > 0.005) {
+      for (let i = 0; i < this.v01TronRedTorusRings.length; i++) {
+        const ring = this.v01TronRedTorusRings[i];
+        const dir = i % 2 === 0 ? 1 : -1;
+        ring.rotation.x += dt * (0.65 + i * 0.18) * dir;
+        ring.rotation.y += dt * (0.85 - i * 0.11) * -dir;
+        ring.rotation.z += dt * 0.32 * dir;
       }
+      if (this.v01TronRadarSweepLine) {
+        this.v01TronRadarSweepLine.rotation.y -= dt * 0.55;
+      }
+    }
 
-      const isV03 = true;
-      const isV03OrV04 = true;
-      this.zones.forEach((zone) => {
-        zone.platformGroup.position.y = 0;
+    // v0.3 外圈冷却环与 v0.5 中央高能等离子光球及双环陀螺动画
+    if (this.v03CoreGimbalA && this.v03CoreGimbalB) {
+      this.v03CoreGimbalA.rotation.y += dt * 0.22;
+      this.v03CoreGimbalB.rotation.y -= dt * 0.18;
+    }
 
-        if (zone.edgeHighlightTimer > 0) {
-          zone.edgeHighlightTimer = Math.max(0, zone.edgeHighlightTimer - dt);
-          zone.edgeNeonMat.opacity = 0.86;
-        } else {
-          zone.edgeNeonMat.opacity = 0.42;
+    if (
+      this.wireframeMix < 0.995 &&
+      this.v05OrangeRedCore &&
+      this.v05ConsoleGimbalA &&
+      this.v05ConsoleGimbalB
+    ) {
+      const pulse = Math.sin(elapsed * 4.2);
+      if (this.v05PlasmaOuterShell) {
+        this.v05PlasmaOuterShell.scale.setScalar(1.0 + pulse * 0.065);
+      }
+      if (this.v05PlasmaHaloSprite) {
+        const s = 4.8 + pulse * 0.32;
+        this.v05PlasmaHaloSprite.scale.set(s, s, 1);
+      }
+      this.v05ConsoleGimbalA.rotation.y += dt * 0.45;
+      this.v05ConsoleGimbalB.rotation.y -= dt * 0.34;
+    }
+
+    // 更新径向数据管道上的流动光粒子流 (仅在非纯线框模式下更新)
+    if (this.wireframeMix < 0.995) {
+      for (let i = 0; i < this.pipeParticleStreams.length; i++) {
+        const stream = this.pipeParticleStreams[i];
+        const posAttr = stream.points.geometry.attributes.position as THREE.BufferAttribute;
+        const arr = posAttr.array as Float32Array;
+        const count = stream.offsets.length;
+        for (let k = 0; k < count; k++) {
+          const rawT = (elapsed * stream.speed + stream.offsets[k]) % 1;
+          const u = stream.dir > 0 ? rawT : 1 - rawT;
+          stream.curve.getPointAt(u, _tmpVecC);
+          arr[k * 3] = _tmpVecC.x;
+          arr[k * 3 + 1] = _tmpVecC.y + 0.025;
+          arr[k * 3 + 2] = _tmpVecC.z;
         }
+        posAttr.needsUpdate = true;
+      }
+    }
+
+    const isV03 = true;
+    const isV03OrV04 = true;
+    const solidAlpha = 1.0 - this.wireframeMix;
+    this.zones.forEach((zone) => {
+      zone.platformGroup.position.y = 0;
+
+      if (zone.edgeHighlightTimer > 0) {
+        zone.edgeHighlightTimer = Math.max(0, zone.edgeHighlightTimer - dt);
+        zone.edgeNeonMat.opacity = 0.86 * solidAlpha;
+      } else {
+        zone.edgeNeonMat.opacity = 0.42 * solidAlpha;
+      }
 
         let needRedraw = false;
         if (Math.abs(zone.displayedScore - zone.targetScore) > 0.5) {
@@ -4992,6 +5588,14 @@ export class CyberRangeScene {
     dom.removeEventListener('webglcontextlost', this.handleContextLost);
     dom.removeEventListener('webglcontextrestored', this.handleContextRestored);
     this.envRT?.dispose();
+    this.cubeEnvRT?.dispose();
+    this.blueCubeEnvTex?.dispose();
+    this.pipeParticleSpriteTex?.dispose();
+    if (this.v05PlasmaHaloSprite) {
+      const mat = this.v05PlasmaHaloSprite.material as THREE.SpriteMaterial;
+      mat.map?.dispose();
+      mat.dispose();
+    }
     this.composer?.dispose();
     if (this.mirrorReflector) {
       this.mirrorReflector.getRenderTarget().dispose();
