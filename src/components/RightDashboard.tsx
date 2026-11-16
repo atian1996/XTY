@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, Search } from 'lucide-react';
 import { CyberPanel } from './CyberPanel';
 import { BattleEvent, Team } from '../types/cyberRange';
 
@@ -24,31 +23,22 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
   battleEvents,
   focusTeamName = '网络护卫队',
   onSelectTeam,
-  onRefreshRanking,
   wireframeMode = false,
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
   const [scoreDeltas, setScoreDeltas] = useState<Record<string, ScoreDeltaPopup>>(
     {}
   );
-  const [isSpinning, setIsSpinning] = useState(false);
 
   const prevScoresRef = useRef<Record<string, number>>({});
 
   // 排序 TOP 10 战队（固定显示前 10 名，不滚动）
   const top10Teams = useMemo(() => {
     const sorted = [...teams].sort((a, b) => b.score - a.score);
-    const indexed = sorted.slice(0, 10).map((t, idx) => ({
+    return sorted.slice(0, 10).map((t, idx) => ({
       ...t,
       rank: idx + 1,
     }));
-    if (!searchQuery.trim()) return indexed;
-    const q = searchQuery.trim().toLowerCase();
-    return sorted
-      .map((t, idx) => ({ ...t, rank: idx + 1 }))
-      .filter((t) => t.name.toLowerCase().includes(q))
-      .slice(0, 10);
-  }, [teams, searchQuery]);
+  }, [teams]);
 
   // 监听积分变化并触发绿色闪现 + 向上飘动的 +XXX 浮动字
   useEffect(() => {
@@ -104,7 +94,7 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
         className="shrink-0"
         innerClassName="px-3 py-2.5"
       >
-        {/* 标题 + 搜索框 + 刷新按钮 */}
+        {/* 标题 */}
         <div className="flex items-center justify-between gap-1.5 mb-1.5 shrink-0">
           <div className="flex items-center gap-1.5 min-w-0">
             <span
@@ -119,55 +109,8 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
                 wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
               }`}
             >
-              实时积分排行榜{' '}
-              <span
-                className={`text-[11px] font-normal ${
-                  wireframeMode ? 'text-[#00d4ff]/80 font-hud-mono' : 'text-[#9ca3af]'
-                }`}
-              >
-                (TOP10)
-              </span>
+              实时积分排行榜
             </h2>
-          </div>
-
-          <div className="flex items-center gap-1 shrink-0">
-            <div className="relative flex items-center">
-              <Search
-                className={`w-3 h-3 absolute left-2 pointer-events-none ${
-                  wireframeMode ? 'text-[#00d4ff]' : 'text-[#9ca3af]'
-                }`}
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜队伍"
-                aria-label="搜索参赛队伍"
-                className={`w-[68px] rounded px-1.5 pl-6 py-0.5 text-[11px] focus:outline-none focus:border-[#00d4ff] ${
-                  wireframeMode
-                    ? 'bg-transparent border border-[#00d4ff]/45 text-white placeholder-white/50'
-                    : 'bg-[#0d1526]/90 border border-[#00d4ff]/25 text-[#e5e7eb] placeholder-[#9ca3af]/70'
-                }`}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setIsSpinning(true);
-                onRefreshRanking?.();
-                window.setTimeout(() => setIsSpinning(false), 500);
-              }}
-              className={`p-1 transition-colors cursor-pointer ${
-                wireframeMode
-                  ? 'text-[#00d4ff] hover:text-white'
-                  : 'text-[#9ca3af] hover:text-[#00d4ff]'
-              }`}
-              title="刷新排行榜"
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${isSpinning ? 'animate-spin text-[#00d4ff]' : ''}`}
-              />
-            </button>
           </div>
         </div>
 
@@ -352,32 +295,9 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
                 wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
               }`}
             >
-              实时动态{' '}
-              <span
-                className={`text-[11px] font-normal ${
-                  wireframeMode ? 'text-[#00d4ff]/80 font-hud-mono' : 'text-[#9ca3af]'
-                }`}
-              >
-                (Event Log)
-              </span>
+              实时动态
             </h2>
-            {/* SSE 连接状态闪烁红点 */}
-            <span
-              className={`w-2 h-2 rounded-full animate-sse-dot inline-block ${
-                wireframeMode ? 'bg-[#ff3300]' : 'bg-red-500'
-              }`}
-              title="SSE 实时数据流在线"
-            />
           </div>
-          <span
-            className={`text-[11px] ${
-              wireframeMode
-                ? 'font-hud-mono text-[#00d4ff]'
-                : 'font-tech-num text-[#9ca3af]'
-            }`}
-          >
-            最近 {timelineEvents.length} 条
-          </span>
         </div>
 
         {/* 垂直时间轴列表 */}

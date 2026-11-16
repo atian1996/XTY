@@ -2967,10 +2967,10 @@ export function createChallengeNode(
       userData.wireframeMix = clamped;
       const solidAlpha = 1.0 - clamped;
 
-      // 1) 线框组透明度平滑渐入 (纯青色 0x00d4ff, opacity: 0.9 + AdditiveBlending)
+      // 1) 线框组透明度平滑渐入 (纯青色 0x00d4ff, opacity: 0.4 + AdditiveBlending，削弱叠加亮度让每根线清晰可见)
       v01TronWireGroup.visible = clamped > 0.005;
-      tronPrimaryMat.opacity = 0.9 * clamped;
-      tronSeamMat.opacity = 0.45 * clamped;
+      tronPrimaryMat.opacity = 0.4 * clamped;
+      tronSeamMat.opacity = 0.2 * clamped;
 
       // 2) 实体机柜 Mesh 表面平滑“溶解”消失，完全切入 0.1版 时隐藏实体 Mesh 释放渲染开销
       v03DetailGroup.visible = solidAlpha > 0.005;

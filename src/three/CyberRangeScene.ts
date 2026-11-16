@@ -774,14 +774,14 @@ export class CyberRangeScene {
     this.groundDiscMesh = groundDisc;
     this.groundGroup.add(groundDisc);
 
-    // 0.1版 (Tron 赛博线框风) 专属地面辅助刻度线：采用暗青色 0x003355 极淡线条，不发光，配合地面六边形网格撑起空间感
+    // 0.1版 (Tron 赛博线框风) 专属地面辅助刻度线：采用暗蓝色 0x001e38 极淡线条，不抢戏、不发光
     this.v01TronGroundPrimaryMat = new THREE.LineBasicMaterial({
-      color: 0x003355,
+      color: 0x001e38,
       transparent: true,
       opacity: 0,
     });
     this.v01TronGroundSeamMat = new THREE.LineBasicMaterial({
-      color: 0x003355,
+      color: 0x001e38,
       transparent: true,
       opacity: 0,
     });
@@ -3492,13 +3492,14 @@ export class CyberRangeScene {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
-    // 纯亮红色 0xff1100 线框环材质
+    // 高亮刺眼纯红线框环材质（突破 threshold 0.9 产生鲜明红光，且不受雾效衰减）
     this.v01TronRedCoreMat = new THREE.LineBasicMaterial({
-      color: 0xff1100,
+      color: new THREE.Color(1.85, 0.1, 0.02),
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      fog: false,
     });
 
     this.v01TronAttackCoreGroup.position.set(0, 0, 0);
@@ -3564,15 +3565,16 @@ export class CyberRangeScene {
       )
     );
 
-    // 2) 中心红球（体积缩小 30% 至半径 0.30，纯亮红色 0xff1100，外围不套太大的透明发光壳）
+    // 2) 中心红球分层（保焦点）：全场唯一绝对刺眼的视觉焦点，保留精巧红球光晕，周围青蓝线框退居其次
     const coreHub = new THREE.Group();
     coreHub.position.set(0, 1.48, 0);
     this.v01TronAttackCoreGroup.add(coreHub);
 
     this.v01TronRedOrbCoreMat = new THREE.MeshBasicMaterial({
-      color: 0xff1100,
+      color: new THREE.Color(2.4, 0.12, 0.02),
       transparent: true,
       opacity: 0,
+      fog: false,
     });
     const solidRedSphere = new THREE.Mesh(
       new THREE.SphereGeometry(0.30, 32, 32),
@@ -3580,35 +3582,38 @@ export class CyberRangeScene {
     );
     coreHub.add(solidRedSphere);
 
-    // 极贴合的微薄边缘层（半径仅 0.33，不套大透明发光壳）
+    // 紧凑高能红光内壳（半径 0.36，高于 threshold 0.9 形成刺眼红核光晕）
     this.v01TronRedOrbAuraMat = new THREE.MeshBasicMaterial({
-      color: 0xff1100,
+      color: new THREE.Color(1.9, 0.08, 0.02),
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      fog: false,
     });
     const solidRedAura = new THREE.Mesh(
-      new THREE.SphereGeometry(0.33, 24, 20),
+      new THREE.SphereGeometry(0.36, 24, 20),
       this.v01TronRedOrbAuraMat
     );
     coreHub.add(solidRedAura);
 
     const redCoreGlowTex = this.createRadialGlowTexture([
-      [0.0, 'rgba(255, 60, 20, 0.65)'],
-      [0.45, 'rgba(255, 17, 0, 0.25)'],
+      [0.0, 'rgba(255, 180, 140, 0.95)'],
+      [0.28, 'rgba(255, 35, 5, 0.78)'],
+      [0.62, 'rgba(255, 17, 0, 0.28)'],
       [1.0, 'rgba(0, 0, 0, 0.0)'],
     ]);
     this.v01TronRedOrbSpriteMat = new THREE.SpriteMaterial({
       map: redCoreGlowTex,
-      color: 0xff1100,
+      color: new THREE.Color(1.85, 0.1, 0.02),
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      fog: false,
     });
     const redCoreGlowSprite = new THREE.Sprite(this.v01TronRedOrbSpriteMat);
-    redCoreGlowSprite.scale.set(0.85, 0.85, 1);
+    redCoreGlowSprite.scale.set(1.75, 1.75, 1);
     coreHub.add(redCoreGlowSprite);
 
     // 环绕红球的紧凑旋转红色线框环（随红球同步缩小 30%）
@@ -3693,10 +3698,10 @@ export class CyberRangeScene {
 
     this.sharedUniforms.uWireframeMode.value = m;
 
-    // 1) 背景色 (0x020408 -> 0x020610) 与暗蓝色雾效 FogExp2(0x020610, 0.015)
+    // 1) 背景色 (0x020408 -> 0x020610) 与强化深蓝色雾效 FogExp2(0x020610, 0.035)，让远处线框隐入黑暗拉开空间层次
     const bgCol = new THREE.Color(0x020408).lerp(new THREE.Color(0x020610), m);
     this.scene.background = bgCol;
-    const fogDensity = THREE.MathUtils.lerp(0.005, 0.015, m);
+    const fogDensity = THREE.MathUtils.lerp(0.005, 0.035, m);
     this.scene.fog = new THREE.FogExp2(bgCol.getHex(), fogDensity);
     this.scene.environmentIntensity = 1.25 * solidAlpha;
 
@@ -3715,14 +3720,14 @@ export class CyberRangeScene {
       this.zonePointLights[i].intensity = 0.26 * solidAlpha;
     }
 
-    // 3) UnrealBloomPass 后处理：0.1版严格设为 strength = 1.0, radius = 0.3, threshold = 0.6（只有线框和红球发光，背景与暗青网格不泛白）
+    // 3) 收敛 UnrealBloomPass 泛光强度：0.1版 strength = 0.7 (0.6~0.8), radius = 0.15, threshold = 0.9（不让普通线框发猛光，仅中心红球强烈发光）
     if (this.bloomPass) {
-      this.bloomPass.strength = THREE.MathUtils.lerp(0.6, 1.0, m);
-      this.bloomPass.radius = THREE.MathUtils.lerp(0.2, 0.3, m);
-      this.bloomPass.threshold = THREE.MathUtils.lerp(0.85, 0.6, m);
+      this.bloomPass.strength = THREE.MathUtils.lerp(0.6, 0.7, m);
+      this.bloomPass.radius = THREE.MathUtils.lerp(0.2, 0.15, m);
+      this.bloomPass.threshold = THREE.MathUtils.lerp(0.85, 0.9, m);
     }
 
-    // 4) 地面六边形网格保留并切换为 0x003355 若隐若现暗青线条（由 groundDiscMesh 的 uWireframeMode 控制）
+    // 4) 地面六边形网格亮度调暗 50% 改为暗蓝色（由 groundDiscMesh 的 uWireframeMode 控制）
     this.backingMat.color.copy(bgCol);
     if (this.mirrorReflector) {
       this.mirrorReflector.visible = !this.useSoftwarePacing && m < 0.25;
@@ -3738,24 +3743,24 @@ export class CyberRangeScene {
     }
 
     this.v01TronGroundGroup.visible = m > 0.005;
-    this.v01TronGroundPrimaryMat.opacity = 0.35 * m;
-    this.v01TronGroundSeamMat.opacity = 0.20 * m;
+    this.v01TronGroundPrimaryMat.opacity = 0.16 * m;
+    this.v01TronGroundSeamMat.opacity = 0.09 * m;
 
-    // 5) 中央攻击区与连接线切换：0x00d4ff, opacity: 0.9, AdditiveBlending 线框 + 0xff1100 缩小 30% 的中心红球
+    // 5) 中央攻击区与连接线切换：青蓝线框 opacity 降至 0.4 退居其次，中心红球保持绝对刺眼焦点
     this.v03CoreGroup.visible = false;
     this.v05CenterAttackGroup.visible = !isFullWireframe;
     this.v03PipesGroup.visible = !isFullWireframe;
 
     this.v01TronAttackCoreGroup.visible = m > 0.005;
     this.v01TronLinksGroup.visible = m > 0.005;
-    this.v01TronPrimaryLineMat.opacity = 0.9 * m;
-    this.v01TronSeamLineMat.opacity = 0.45 * m;
-    this.v01TronRedCoreMat.opacity = 0.85 * m;
-    this.v01TronRedOrbCoreMat.opacity = 0.95 * m;
-    this.v01TronRedOrbAuraMat.opacity = 0.18 * m;
-    this.v01TronRedOrbSpriteMat.opacity = 0.15 * m;
+    this.v01TronPrimaryLineMat.opacity = 0.4 * m;
+    this.v01TronSeamLineMat.opacity = 0.2 * m;
+    this.v01TronRedCoreMat.opacity = 0.92 * m;
+    this.v01TronRedOrbCoreMat.opacity = 1.0 * m;
+    this.v01TronRedOrbAuraMat.opacity = 0.48 * m;
+    this.v01TronRedOrbSpriteMat.opacity = 0.72 * m;
 
-    // 6) 七大六边形底座平台与 35 台算力机柜模型溶解过渡（线框 0x00d4ff, opacity: 0.9 + AdditiveBlending）
+    // 6) 七大六边形底座平台与 35 台算力机柜模型溶解过渡（线框 0x00d4ff, opacity: 0.4 + AdditiveBlending）
     this.hullDarkMat.transparent = m > 0.005;
     this.hullDarkMat.opacity = solidAlpha;
     this.rimSilverMat.transparent = m > 0.005;
@@ -3769,8 +3774,8 @@ export class CyberRangeScene {
       zone.v03FloorProjMesh.visible = !isFullWireframe;
 
       zone.v01TronPlatformWireGroup.visible = m > 0.005;
-      zone.v01TronPrimaryMat.opacity = 0.9 * m;
-      zone.v01TronSeamMat.opacity = 0.45 * m;
+      zone.v01TronPrimaryMat.opacity = 0.4 * m;
+      zone.v01TronSeamMat.opacity = 0.2 * m;
 
       zone.nodes.forEach((node) => {
         (node.userData as ChallengeNodeUserData).setWireframeMix(m);
@@ -3998,7 +4003,7 @@ export class CyberRangeScene {
       this.activeBeams.splice(existingIdx, 1);
     }
 
-    // 0.1版采用亮红色 0xff1100 与适度强度 1.15；0.2版保持 0xff2614 与 1.32
+    // 0.1版采用刺眼亮红色 0xff1100 与高强度 1.65 (突破 threshold 0.9 形成锐利红光束)；0.2版保持 0xff2614 与 1.32
     const isV01Tron = this.currentVersion === '0.3';
     const beamRadius = isV01Tron ? 0.013 : 0.016;
     const beamColorHex = isV01Tron ? 0xff1100 : 0xff2614;
@@ -4008,7 +4013,7 @@ export class CyberRangeScene {
       uniforms: {
         uTime: this.sharedUniforms.uTime,
         uProgress: { value: opts.instantArrive ? 1.0 : 0.0 },
-        uIntensity: { value: isV01Tron ? 1.15 : 1.32 },
+        uIntensity: { value: isV01Tron ? 1.65 : 1.32 },
         uOpacity: { value: opts.instantArrive ? 0.94 : 0.98 },
         uColor: { value: new THREE.Color(beamColorHex) },
       },
@@ -4635,7 +4640,7 @@ export class CyberRangeScene {
     }
     this.scene.fog =
       this.currentVersion === '0.3'
-        ? new THREE.FogExp2(0x020610, 0.015)
+        ? new THREE.FogExp2(0x020610, 0.035)
         : new THREE.FogExp2(0x020408, 0.005);
     const { endPos, endTarget } = this.getDefaultOverviewPose(mode);
     this.startCameraTransition(endPos, endTarget, this.autoRotateEnabled, 1.2);

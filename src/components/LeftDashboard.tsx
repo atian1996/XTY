@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowUp,
   ChevronLeft,
   ChevronRight,
   Cloud,
@@ -9,7 +8,6 @@ import {
   Network,
   Radar,
   Server,
-  ShieldCheck,
   Sparkles,
 } from 'lucide-react';
 import { CyberPanel } from './CyberPanel';
@@ -168,17 +166,9 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                 wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
               }`}
             >
-              全局态势概览{' '}
-              <span
-                className={`text-[11px] font-normal ${
-                  wireframeMode ? 'text-[#00d4ff]/80 font-hud-mono' : 'text-[#9ca3af]'
-                }`}
-              >
-                (Global Overview)
-              </span>
+              全局态势概览
             </h2>
           </div>
-          <ShieldCheck className="w-3.5 h-3.5 text-[#00d4ff]/80 shrink-0" />
         </div>
 
         {/* 横向三列并排 */}
@@ -325,21 +315,7 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
               >
                 {animAcc.toFixed(1)}%
               </span>
-              <ArrowUp
-                className={`w-3.5 h-3.5 stroke-[2.2] ${
-                  wireframeMode ? 'text-[#00d4ff]' : 'text-[#00ff88]'
-                }`}
-              />
             </div>
-            <span
-              className={`mt-1.5 text-[10px] whitespace-nowrap ${
-                wireframeMode
-                  ? 'font-hud-mono text-[#00d4ff]'
-                  : 'font-tech-num text-[#00ff88]/85'
-              }`}
-            >
-              +1.8% 实时均值
-            </span>
             <span
               className={`mt-1 text-xs whitespace-nowrap ${
                 wireframeMode ? 'text-white' : 'text-[#9ca3af]'
@@ -381,15 +357,6 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
               </span>
             </h2>
           </div>
-          <span
-            className={`text-[11px] whitespace-nowrap shrink-0 ${
-              wireframeMode
-                ? 'font-hud-mono text-[#00d4ff]'
-                : 'font-tech-num text-[#9ca3af]'
-            }`}
-          >
-            7 大方向
-          </span>
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col justify-between gap-0.5">
@@ -519,14 +486,7 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                 wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
               }`}
             >
-              实时一血榜{' '}
-              <span
-                className={`text-[11px] font-normal ${
-                  wireframeMode ? 'text-[#00d4ff]/80 font-hud-mono' : 'text-[#9ca3af]'
-                }`}
-              >
-                (First Blood)
-              </span>
+              实时一血榜
             </h2>
           </div>
 
@@ -711,13 +671,6 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                       }`}
                     >
                       <span className="text-white">{fb.timestamp}</span>
-                      <span
-                        className={`font-bold ${
-                          wireframeMode ? 'text-[#00d4ff]' : 'text-[#ffd24a]'
-                        }`}
-                      >
-                        #{fb.rankIndex}
-                      </span>
                     </div>
                   </div>
                 </CyberPanel>

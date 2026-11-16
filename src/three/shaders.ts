@@ -185,13 +185,13 @@ export const groundDiscFragmentShader = /* glsl */ `
     float alpha = radialFade * (0.48 + combinedGrid * 0.44 + ringPlatformsRefl * 0.12);
     vec4 v02Out = vec4(col, clamp(alpha, 0.0, 0.92));
 
-    // 0.1版 (赛博线框风)：暗蓝黑基底 (0x020610) + 暗青色 (0x003355) 若隐若现的不发光六边形地面网格
-    vec3 tronBaseCol = vec3(0.001, 0.003, 0.008);
-    vec3 tronHexColor = vec3(0.0, 0.20, 0.333); // 0x003355 (远低于 Bloom 阈值 0.6，绝不泛光)
-    float tronHexPattern = hexLineMajor * 0.65 + hexLineMinor * 0.22;
+    // 0.1版 (赛博线框风)：深邃暗蓝黑基底 + 亮度调暗 50% 的暗蓝色六边形地面网格，不抢戏、绝不泛光
+    vec3 tronBaseCol = vec3(0.0005, 0.0014, 0.0038);
+    vec3 tronHexColor = vec3(0.0, 0.085, 0.165); // 暗蓝色调且亮度减半
+    float tronHexPattern = hexLineMajor * 0.32 + hexLineMinor * 0.10;
     vec3 tronCol = tronBaseCol + tronHexColor * tronHexPattern;
-    float tronAlpha = radialFade * (0.42 + tronHexPattern * 0.48);
-    vec4 v01Out = vec4(tronCol, clamp(tronAlpha, 0.0, 0.88));
+    float tronAlpha = radialFade * (0.28 + tronHexPattern * 0.32);
+    vec4 v01Out = vec4(tronCol, clamp(tronAlpha, 0.0, 0.72));
 
     gl_FragColor = mix(v02Out, v01Out, clamp(uWireframeMode, 0.0, 1.0));
   }
