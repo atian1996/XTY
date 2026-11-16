@@ -31,6 +31,12 @@ export type DeviceArchetype = 'rack' | 'blade' | 'core' | 'tower' | 'console';
 
 export type ChallengeState = 'idle' | 'attacking' | 'solved';
 
+export interface ChallengeSolver {
+  teamId: string;
+  teamName: string;
+  teamColor: string;
+}
+
 export interface Challenge {
   id: string;
   zoneId: ZoneId;
@@ -46,6 +52,7 @@ export interface Challenge {
   solvedBy?: string;
   solveCount: number;
   firstBlood: boolean;
+  topSolvers?: ChallengeSolver[];
   lastEventAt: number;
 }
 
@@ -211,6 +218,11 @@ export const INITIAL_ZONES: ZoneConfig[] = [
         solvedBy: '天枢安全战队',
         solveCount: 4,
         firstBlood: true,
+        topSolvers: [
+          { teamId: 't1', teamName: '天枢安全战队', teamColor: '#00d4ff' },
+          { teamId: 't2', teamName: '网络护卫队', teamColor: '#ff6b35' },
+          { teamId: 't3', teamName: '长城守夜人', teamColor: '#00ff88' },
+        ],
         lastEventAt: Date.now() - 180000,
       },
       {
@@ -243,6 +255,10 @@ export const INITIAL_ZONES: ZoneConfig[] = [
         solvedBy: '长城守夜人',
         solveCount: 2,
         firstBlood: false,
+        topSolvers: [
+          { teamId: 't3', teamName: '长城守夜人', teamColor: '#00ff88' },
+          { teamId: 't4', teamName: '深蓝零日组', teamColor: '#a855f7' },
+        ],
         lastEventAt: Date.now() - 95000,
       },
       {
@@ -312,6 +328,10 @@ export const INITIAL_ZONES: ZoneConfig[] = [
         solvedBy: '深蓝零日组',
         solveCount: 2,
         firstBlood: true,
+        topSolvers: [
+          { teamId: 't4', teamName: '深蓝零日组', teamColor: '#a855f7' },
+          { teamId: 't1', teamName: '天枢安全战队', teamColor: '#00d4ff' },
+        ],
         lastEventAt: Date.now() - 210000,
       },
       {
@@ -412,6 +432,11 @@ export const INITIAL_ZONES: ZoneConfig[] = [
         solvedBy: '星渊红队',
         solveCount: 3,
         firstBlood: true,
+        topSolvers: [
+          { teamId: 't6', teamName: '星渊红队', teamColor: '#ffd24a' },
+          { teamId: 't1', teamName: '天枢安全战队', teamColor: '#00d4ff' },
+          { teamId: 't2', teamName: '网络护卫队', teamColor: '#ff6b35' },
+        ],
         lastEventAt: Date.now() - 320000,
       },
       {
@@ -511,6 +536,11 @@ export const INITIAL_ZONES: ZoneConfig[] = [
         solvedBy: '量子矩阵实验室',
         solveCount: 3,
         firstBlood: false,
+        topSolvers: [
+          { teamId: 't5', teamName: '量子矩阵实验室', teamColor: '#f472b6' },
+          { teamId: 't3', teamName: '长城守夜人', teamColor: '#00ff88' },
+          { teamId: 't7', teamName: '凌霄算力卫士', teamColor: '#14e0c8' },
+        ],
         lastEventAt: Date.now() - 260000,
       },
       {
@@ -527,6 +557,10 @@ export const INITIAL_ZONES: ZoneConfig[] = [
         solvedBy: '天枢安全战队',
         solveCount: 2,
         firstBlood: true,
+        topSolvers: [
+          { teamId: 't1', teamName: '天枢安全战队', teamColor: '#00d4ff' },
+          { teamId: 't4', teamName: '深蓝零日组', teamColor: '#a855f7' },
+        ],
         lastEventAt: Date.now() - 140000,
       },
       {
@@ -612,6 +646,10 @@ export const INITIAL_ZONES: ZoneConfig[] = [
         solvedBy: '网络护卫队',
         solveCount: 2,
         firstBlood: true,
+        topSolvers: [
+          { teamId: 't2', teamName: '网络护卫队', teamColor: '#ff6b35' },
+          { teamId: 't6', teamName: '星渊红队', teamColor: '#ffd24a' },
+        ],
         lastEventAt: Date.now() - 290000,
       },
       {
@@ -711,6 +749,11 @@ export const INITIAL_ZONES: ZoneConfig[] = [
         solvedBy: '凌霄算力卫士',
         solveCount: 5,
         firstBlood: false,
+        topSolvers: [
+          { teamId: 't7', teamName: '凌霄算力卫士', teamColor: '#14e0c8' },
+          { teamId: 't1', teamName: '天枢安全战队', teamColor: '#00d4ff' },
+          { teamId: 't9', teamName: '苍穹逆向联队', teamColor: '#ff3b5c' },
+        ],
         lastEventAt: Date.now() - 360000,
       },
       {
@@ -811,6 +854,11 @@ export const INITIAL_ZONES: ZoneConfig[] = [
         solvedBy: '暗影脉冲',
         solveCount: 3,
         firstBlood: false,
+        topSolvers: [
+          { teamId: 't8', teamName: '暗影脉冲', teamColor: '#2f8bff' },
+          { teamId: 't5', teamName: '量子矩阵实验室', teamColor: '#f472b6' },
+          { teamId: 't3', teamName: '长城守夜人', teamColor: '#00ff88' },
+        ],
         lastEventAt: Date.now() - 400000,
       },
       {

@@ -215,6 +215,7 @@ export class CyberRangeScene {
   private fxaaPass?: ShaderPass;
   private isSoftwareGl: boolean;
   private currentVersion: SandboxVersion = '0.5';
+  private teamsData: Team[];
   private nodePalette!: SharedNodePalette;
   private resizeObserver?: ResizeObserver;
   private envRT?: THREE.WebGLRenderTarget;
@@ -413,6 +414,7 @@ export class CyberRangeScene {
     }
   ) {
     this.container = container;
+    this.teamsData = teamsData;
     this.onHoverChange = callbacks.onHoverChange;
     this.onSelectChange = callbacks.onSelectChange;
     this.onStatsSync = callbacks.onStatsSync;
@@ -2070,8 +2072,11 @@ export class CyberRangeScene {
           }
         );
 
-        const labelHeights = [2.36, 2.58, 2.80, 2.58, 2.36];
-        (node.userData as ChallengeNodeUserData).label.position.y = labelHeights[idx % 5];
+        const labelHeights = [2.20, 2.28, 2.36, 2.28, 2.20];
+        const topSolverHeights = [2.82, 2.90, 2.98, 2.90, 2.82];
+        const nodeUd = node.userData as ChallengeNodeUserData;
+        nodeUd.label.position.y = labelHeights[idx % 5];
+        nodeUd.topSolversSprite.position.y = topSolverHeights[idx % 5];
 
         platformGroup.add(node);
         nodesMap.set(ch.id, node);
@@ -4229,6 +4234,21 @@ export class CyberRangeScene {
     if (isFirstBlood) challenge.firstBlood = true;
     challenge.lastEventAt = Date.now();
 
+    if (!challenge.topSolvers) {
+      challenge.topSolvers = [];
+    }
+    if (
+      challenge.topSolvers.length < 3 &&
+      !challenge.topSolvers.some((s) => s.teamName === teamName)
+    ) {
+      const matchedTeam = this.teamsData.find((t) => t.name === teamName);
+      challenge.topSolvers.push({
+        teamId: matchedTeam?.id || `team-${teamName}`,
+        teamName,
+        teamColor: matchedTeam?.color || '#00d4ff',
+      });
+    }
+
     if (this.attackFollowEnabled) {
       this.startAttackFollow(challenge, zone, node, teamName, isFirstBlood);
     }
@@ -4549,6 +4569,7 @@ export class CyberRangeScene {
       solvedCount,
       zone.config.challenges.length,
       threatsCount,
+      true,
       this.currentVersion === '0.3'
     );
     zone.v03FloorProjRedraw(

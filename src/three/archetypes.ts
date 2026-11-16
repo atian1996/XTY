@@ -9,6 +9,7 @@ import {
 } from '../types/cyberRange';
 import {
   createChallengeHoloLabel,
+  createChallengeTopSolversSprite,
   createConsoleScreenTexture,
   createContactShadowTexture,
   createGpuFanFaceTexture,
@@ -64,6 +65,7 @@ export interface ChallengeNodeUserData {
   scanRing: THREE.Mesh;
   firstBloodCrown: THREE.Group;
   label: THREE.Sprite;
+  topSolversSprite: THREE.Sprite;
   fxAnchor: THREE.Object3D;
   pulsePhase: number;
   hovered: boolean;
@@ -2867,10 +2869,14 @@ export function createChallengeNode(
   firstBloodCrown.visible = challenge.state === 'solved' && challenge.firstBlood;
   group.add(firstBloodCrown);
 
-  // ⑥ 题目全息铭牌（v0.3 / v0.4 下呈现极简半透明暗底青框中文小标签）
+  // ⑥ 题目全息铭牌（v0.3 / v0.4 下呈现极简半透明暗底青框中文小标签）+ 前三攻破队伍榜
   const label = createChallengeHoloLabel(challenge, zoneColorHex, palette.maxAnisotropy);
-  label.position.y = 2.45;
+  label.position.y = 2.24;
   group.add(label);
+
+  const topSolversSprite = createChallengeTopSolversSprite(challenge, palette.maxAnisotropy);
+  topSolversSprite.position.y = 2.90;
+  group.add(topSolversSprite);
 
   // ⑦ 特效锚点
   const fxAnchor = new THREE.Object3D();
@@ -2913,6 +2919,7 @@ export function createChallengeNode(
     scanRing,
     firstBloodCrown,
     label,
+    topSolversSprite,
     fxAnchor,
     pulsePhase: Math.random() * Math.PI * 2,
     hovered: false,
@@ -2939,10 +2946,18 @@ export function createChallengeNode(
         isV03Abstract: true,
         isTronWireframe: userData.version === '0.3',
       });
+      topSolversSprite.userData.redraw?.(challenge.topSolvers || [], {
+        hovered: hover || userData.selected,
+        isTronWireframe: userData.version === '0.3',
+      });
     },
     setSelected(sel: boolean) {
       userData.selected = sel;
       (selectRing.material as THREE.MeshBasicMaterial).opacity = sel ? 0.9 : 0;
+      topSolversSprite.userData.redraw?.(challenge.topSolvers || [], {
+        hovered: userData.hovered || sel,
+        isTronWireframe: userData.version === '0.3',
+      });
     },
     setLabelMode(mode: LabelDisplayMode) {
       userData.labelMode = mode;
@@ -2959,6 +2974,10 @@ export function createChallengeNode(
         hovered: userData.hovered,
         isV03: true,
         isV03Abstract: true,
+        isTronWireframe: ver === '0.3',
+      });
+      topSolversSprite.userData.redraw?.(challenge.topSolvers || [], {
+        hovered: userData.hovered || userData.selected,
         isTronWireframe: ver === '0.3',
       });
     },
@@ -3040,6 +3059,10 @@ export function createChallengeNode(
         hovered: userData.hovered,
         isV03: true,
         isV03Abstract: true,
+        isTronWireframe: userData.version === '0.3',
+      });
+      topSolversSprite.userData.redraw?.(challenge.topSolvers || [], {
+        hovered: userData.hovered || userData.selected,
         isTronWireframe: userData.version === '0.3',
       });
     },
@@ -3175,6 +3198,7 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     (ud.labelMode === 'hover' && (ud.hovered || ud.selected));
 
   ud.label.visible = shouldShowLabel;
+  ud.topSolversSprite.visible = shouldShowLabel;
   if (shouldShowLabel) {
     const baseLabelW = ud.hovered || ud.selected ? 1.12 : 0.88;
     const baseLabelH = ud.hovered || ud.selected ? 0.38 : 0.30;
@@ -3187,6 +3211,14 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     ud.label.scale.set(
       THREE.MathUtils.damp(ud.label.scale.x, baseLabelW, 14, dt),
       THREE.MathUtils.damp(ud.label.scale.y, baseLabelH * flipY, 18, dt),
+      1
+    );
+
+    const baseSolversW = ud.hovered || ud.selected ? 1.54 : 1.32;
+    const baseSolversH = ud.hovered || ud.selected ? 0.77 : 0.66;
+    ud.topSolversSprite.scale.set(
+      THREE.MathUtils.damp(ud.topSolversSprite.scale.x, baseSolversW, 14, dt),
+      THREE.MathUtils.damp(ud.topSolversSprite.scale.y, baseSolversH, 14, dt),
       1
     );
   }
