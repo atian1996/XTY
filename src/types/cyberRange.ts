@@ -7,7 +7,7 @@ export type ZoneId =
   | 'ops'
   | 'net';
 
-export type SandboxVersion = '0.1' | '0.2' | '0.3' | '0.4' | '0.5';
+export type SandboxVersion = '0.3' | '0.5';
 
 export type V02IconType =
   | 'cloud'

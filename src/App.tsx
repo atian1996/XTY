@@ -342,16 +342,7 @@ export default function App() {
         setDockCollapsed((prev) => !prev);
       } else if (e.key.toLowerCase() === 'v') {
         setSandboxVersion((prev) => {
-          const next: SandboxVersion =
-            prev === '0.1'
-              ? '0.2'
-              : prev === '0.2'
-              ? '0.3'
-              : prev === '0.3'
-              ? '0.4'
-              : prev === '0.4'
-              ? '0.5'
-              : '0.1';
+          const next: SandboxVersion = prev === '0.5' ? '0.3' : '0.5';
           setActiveZoneFocus('all');
           sceneInstanceRef.current?.setVersion(next, false);
           return next;

@@ -406,57 +406,57 @@ export function createSharedNodePalette(maxAnisotropy = 4): SharedNodePalette {
     },
     v03: {
       matteBlackMat: new THREE.MeshStandardMaterial({
-        color: 0x465970,
+        color: 0x4c607a,
         map: v03BrushedTex,
         bumpMap: v03BrushedTex,
-        bumpScale: 0.014,
-        metalness: 0.91,
-        roughness: 0.18,
-        envMapIntensity: 2.65,
+        bumpScale: 0.013,
+        metalness: 0.92,
+        roughness: 0.16,
+        envMapIntensity: 2.75,
       }),
       carbonFiberMat: new THREE.MeshStandardMaterial({
-        color: 0x526782,
+        color: 0x586f8c,
         map: v03CarbonTex,
         bumpMap: v03CarbonTex,
-        bumpScale: 0.015,
-        metalness: 0.88,
-        roughness: 0.16,
-        envMapIntensity: 2.55,
+        bumpScale: 0.014,
+        metalness: 0.90,
+        roughness: 0.15,
+        envMapIntensity: 2.65,
       }),
       brushedTitaniumMat: new THREE.MeshStandardMaterial({
-        color: 0x94adc9,
+        color: 0x9bb5d4,
         map: v03BrushedTex,
         bumpMap: v03BrushedTex,
-        bumpScale: 0.01,
+        bumpScale: 0.009,
         metalness: 0.96,
-        roughness: 0.11,
-        envMapIntensity: 2.9,
+        roughness: 0.10,
+        envMapIntensity: 3.0,
       }),
       darkTitaniumMat: new THREE.MeshStandardMaterial({
-        color: 0x627894,
+        color: 0x69819f,
         map: v03BrushedTex,
         bumpMap: v03BrushedTex,
-        bumpScale: 0.011,
-        metalness: 0.93,
-        roughness: 0.16,
-        envMapIntensity: 2.6,
+        bumpScale: 0.010,
+        metalness: 0.94,
+        roughness: 0.14,
+        envMapIntensity: 2.75,
       }),
       metalEdgeRimMat: new THREE.LineBasicMaterial({
-        color: 0x9beeff,
+        color: 0xa5f3fc,
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.92,
       }),
       pureCyanGlowMat: new THREE.MeshStandardMaterial({
         color: 0x00b4d8,
         emissive: 0x0096c7,
-        emissiveIntensity: 0.72,
-        roughness: 0.18,
+        emissiveIntensity: 0.65,
+        roughness: 0.2,
       }),
       deepBlueGlowMat: new THREE.MeshStandardMaterial({
         color: 0x0ea5e9,
         emissive: 0x0284c7,
-        emissiveIntensity: 0.58,
-        roughness: 0.2,
+        emissiveIntensity: 0.52,
+        roughness: 0.22,
       }),
       rackFrontMat: new THREE.MeshStandardMaterial({
         map: v03RackTex,
@@ -2632,26 +2632,15 @@ export function createChallengeNode(
   selectRing.position.y = 0.05;
   group.add(selectRing);
 
-  // ② v0.1 精细多部件设备机体 + v0.2 设计图还原机体 + v0.3 暗黑钛金极简硬件机体
-  const { body, detailGroup, stepDynamicTexture } = buildArchetypeMeshes(
-    challenge.archetype,
-    zoneColor,
-    zoneColorHex,
-    statusMat,
-    palette
-  );
+  // ② 拾取碰撞代理盒 + v0.3/v0.5 枪铁灰与暗板岩银高光金属机柜模型
+  const body = new THREE.Mesh(palette.getBox(1.5, 2.2, 1.5), palette.proxyMat);
+  body.position.y = 1.1;
   body.userData.challengeGroup = group;
   group.add(body);
-  group.add(detailGroup);
 
-  const v02Built = buildV02ChallengeMesh(
-    v02Opts?.dioramaType ?? 'cloud-racks',
-    v02Opts?.slotIndex ?? 0,
-    v02Opts?.v02Color ?? zoneColor,
-    statusMat,
-    palette
-  );
-  group.add(v02Built.v02DetailGroup);
+  const detailGroup = new THREE.Group();
+  const v02DetailGroup = new THREE.Group();
+  const v04DetailGroup = new THREE.Group();
 
   const v03DetailGroup = buildV03ChallengeMesh(
     challenge.zoneId,
@@ -2661,15 +2650,6 @@ export function createChallengeNode(
     false
   );
   group.add(v03DetailGroup);
-
-  const v04DetailGroup = buildV03ChallengeMesh(
-    challenge.zoneId,
-    v02Opts?.slotIndex ?? 0,
-    statusMat,
-    palette,
-    true
-  );
-  group.add(v04DetailGroup);
 
   // ③ 顶部细束战术状态光针（v0.3 / v0.4 下完全隐藏以杜绝光污染）
   const beacon = new THREE.Mesh(
@@ -2725,7 +2705,7 @@ export function createChallengeNode(
   fxAnchor.position.y = 1.1;
   group.add(fxAnchor);
 
-  const initVer = v02Opts?.initialVersion ?? '0.4';
+  const initVer: SandboxVersion = v02Opts?.initialVersion ?? '0.5';
   const v01Pos = v02Opts?.v01Pos ?? new THREE.Vector3();
   const v01RotY = v02Opts?.v01RotY ?? 0;
 
@@ -2739,14 +2719,14 @@ export function createChallengeNode(
     version: initVer,
     v01Pos,
     v01RotY,
-    v02Pos: v02Built.v02Pos,
-    v02RotY: v02Built.v02RotY,
+    v02Pos: v01Pos,
+    v02RotY: v01RotY,
     baseRing,
     hoverRing,
     selectRing,
     body,
     detailGroup,
-    v02DetailGroup: v02Built.v02DetailGroup,
+    v02DetailGroup,
     v03DetailGroup,
     v04DetailGroup,
     statusMat,
@@ -2768,8 +2748,6 @@ export function createChallengeNode(
     labelFlipTimer: 0,
     solveBurstTimer: 0,
     compressTimer: 0,
-    stepDynamicTexture,
-    stepV02Dynamic: v02Built.stepV02Dynamic,
     setHover(hover: boolean) {
       userData.hovered = hover;
       userData.targetScale = hover ? 1.08 : 1.0;
@@ -2778,6 +2756,8 @@ export function createChallengeNode(
         team: challenge.solvedBy || challenge.activeAttacker,
         firstBlood: challenge.firstBlood,
         hovered: hover,
+        isV03: true,
+        isV03Abstract: true,
       });
     },
     setSelected(sel: boolean) {
@@ -2789,31 +2769,28 @@ export function createChallengeNode(
     },
     setVersion(ver: SandboxVersion) {
       userData.version = ver;
-      const isV02 = ver === '0.2';
-      const isV03Style = ver === '0.3' || ver === '0.5';
-      const isV04 = ver === '0.4';
-      const isV03OrV04OrV05 = isV03Style || isV04;
-      detailGroup.visible = ver === '0.1';
-      v02Built.v02DetailGroup.visible = isV02;
-      v03DetailGroup.visible = isV03Style;
-      v04DetailGroup.visible = isV04;
-      beacon.visible = !isV03OrV04OrV05;
-      firstBloodCrown.visible =
-        !isV03OrV04OrV05 && userData.state === 'solved' && Boolean(challenge.firstBlood);
-      group.position.copy(isV02 ? userData.v02Pos : userData.v01Pos);
-      group.rotation.y = isV02 ? userData.v02RotY : userData.v01RotY;
+      v03DetailGroup.visible = true;
+      beacon.visible = false;
+      firstBloodCrown.visible = false;
+      group.position.copy(userData.v01Pos);
+      group.rotation.y = userData.v01RotY;
       label.userData.redraw(userData.state, {
         team: challenge.solvedBy || challenge.activeAttacker,
         firstBlood: challenge.firstBlood,
         hovered: userData.hovered,
-        isV03: isV03OrV04OrV05,
-        isV03Abstract: isV03Style,
+        isV03: true,
+        isV03Abstract: true,
       });
     },
     flashFail(attempts: number) {
       userData.failFlashTimer = 1.25;
       userData.compressTimer = 0.25;
-      label.userData.redraw('failed', { attempts, hovered: userData.hovered });
+      label.userData.redraw('failed', {
+        attempts,
+        hovered: userData.hovered,
+        isV03: true,
+        isV03Abstract: true,
+      });
     },
     transitionState(
       nextState: Challenge['state'],
@@ -2830,11 +2807,7 @@ export function createChallengeNode(
         if (payload.team) challenge.solvedBy = payload.team;
         if (payload.firstBlood !== undefined) challenge.firstBlood = payload.firstBlood;
         userData.solveBurstTimer = 0.85;
-        firstBloodCrown.visible =
-          userData.version !== '0.3' &&
-          userData.version !== '0.4' &&
-          userData.version !== '0.5' &&
-          Boolean(challenge.firstBlood);
+        firstBloodCrown.visible = false;
       }
 
       const nextHex =
@@ -2850,6 +2823,8 @@ export function createChallengeNode(
         team: payload.team || challenge.solvedBy || challenge.activeAttacker,
         firstBlood: challenge.firstBlood,
         hovered: userData.hovered,
+        isV03: true,
+        isV03Abstract: true,
       });
     },
   };
@@ -2864,18 +2839,10 @@ const _v03DeepBlue = new THREE.Color(0x0284c7);
 const _v03WarmRed = new THREE.Color(0xff2e1f);
 
 /**
- * 每帧更新单台设备节点的状态动画、材质发光与铭牌显隐模式
+ * 每帧更新单台设备节点的状态动画、材质发光与铭牌显隐模式（适配 v0.3 与 v0.5）
  */
 export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: number) {
   const ud = node.userData as ChallengeNodeUserData;
-  const isV03 = ud.version === '0.3' || ud.version === '0.5';
-  const isV03OrV04 = isV03 || ud.version === '0.4';
-
-  if (ud.version === '0.2') {
-    ud.stepV02Dynamic?.(dt, elapsed);
-  } else if (ud.version === '0.1') {
-    ud.stepDynamicTexture?.(dt, elapsed);
-  }
 
   // 悬停缩放阻尼 + 受击回弹
   let scaleMod = ud.targetScale;
@@ -2891,14 +2858,7 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
       scaleMod *= 1.0 + Math.sin((p / 0.4) * Math.PI) * 0.14;
     }
   }
-  const activeDetail =
-    ud.version === '0.2'
-      ? ud.v02DetailGroup
-      : ud.version === '0.3' || ud.version === '0.5'
-      ? ud.v03DetailGroup
-      : ud.version === '0.4'
-      ? ud.v04DetailGroup
-      : ud.detailGroup;
+  const activeDetail = ud.v03DetailGroup;
   const currScale = THREE.MathUtils.damp(activeDetail.scale.x, scaleMod, 14, dt);
   activeDetail.scale.setScalar(currScale);
 
@@ -2923,19 +2883,19 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
         firstBlood: ud.challenge.firstBlood,
         attempts: ud.challenge.totalAttempts,
         hovered: ud.hovered,
+        isV03: true,
+        isV03Abstract: true,
       });
     }
   }
 
-  // v0.3 / v0.4 严格色彩纪律：全场设备指示灯采用冷色青/蓝 (Cool Cyan/Blue)，仅在被红色攻击激光锁定或阻断时呈现鲜明红光对比
-  if (isV03OrV04) {
-    if (ud.state === 'attacking' || ud.failFlashTimer > 0) {
-      displayColor = _v03WarmRed;
-    } else if (ud.state === 'solved') {
-      displayColor = _v03CoolCyan;
-    } else {
-      displayColor = _v03DeepBlue;
-    }
+  // 严格色彩纪律：全场设备指示灯采用冷色青/蓝 (Cool Cyan/Blue)，仅在被红色攻击激光锁定或阻断时呈现鲜明红光对比
+  if (ud.state === 'attacking' || ud.failFlashTimer > 0) {
+    displayColor = _v03WarmRed;
+  } else if (ud.state === 'solved') {
+    displayColor = _v03CoolCyan;
+  } else {
+    displayColor = _v03DeepBlue;
   }
 
   const ringMat = ud.baseRing.material as THREE.MeshBasicMaterial;
@@ -2946,81 +2906,45 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
   ud.statusMat.emissive.copy(displayColor);
   ringMat.color.copy(displayColor);
   beaconMat.color.copy(displayColor);
-  scanMat.color.setHex(isV03OrV04 ? 0xff2e1f : STATE_COLOR.attacking);
+  scanMat.color.setHex(0xff2e1f);
 
   const pulse = Math.sin(elapsed * 4.5 + ud.pulsePhase) * 0.5 + 0.5;
   if (ud.state === 'idle') {
     ud.baseRing.rotation.z += dt * 0.35;
-    ringMat.opacity = ud.hovered
-      ? 0.75
-      : isV03OrV04
-      ? 0.22
-      : ud.version === '0.2'
-      ? 0.25
-      : 0.42;
-    ud.statusMat.emissiveIntensity = ud.hovered ? 0.85 : isV03OrV04 ? 0.45 : 0.45;
+    ringMat.opacity = ud.hovered ? 0.75 : 0.22;
+    ud.statusMat.emissiveIntensity = ud.hovered ? 0.85 : 0.45;
     beaconMat.opacity = THREE.MathUtils.damp(beaconMat.opacity, 0, 8, dt);
     scanMat.opacity = THREE.MathUtils.damp(scanMat.opacity, 0, 10, dt);
   } else if (ud.state === 'attacking') {
     ud.baseRing.rotation.z += dt * 1.8;
-    ringMat.opacity = isV03OrV04 ? 0.58 + pulse * 0.25 : 0.65 + pulse * 0.25;
-    ud.statusMat.emissiveIntensity = isV03OrV04 ? 0.9 + pulse * 0.45 : 0.75 + pulse * 0.65;
-    beaconMat.opacity = isV03OrV04 ? 0 : 0.18 + pulse * 0.14;
-    scanMat.opacity = isV03OrV04 ? 0.55 : 0.78;
+    ringMat.opacity = 0.58 + pulse * 0.25;
+    ud.statusMat.emissiveIntensity = 0.9 + pulse * 0.45;
+    beaconMat.opacity = 0;
+    scanMat.opacity = 0.55;
     const scanPhase = (elapsed % 1.8) / 1.8;
     ud.scanRing.position.y = Math.sin(scanPhase * Math.PI) * 1.85 + 0.1;
   } else if (ud.state === 'solved') {
     ud.baseRing.rotation.z += dt * 0.65;
-    ringMat.opacity = isV03OrV04 ? 0.45 : ud.version === '0.2' ? 0.48 : 0.72;
-    ud.statusMat.emissiveIntensity = isV03OrV04 ? 0.68 : 0.85;
-    beaconMat.opacity = isV03OrV04 ? 0 : ud.version === '0.2' ? 0.08 : 0.16;
+    ringMat.opacity = 0.45;
+    ud.statusMat.emissiveIntensity = 0.68;
+    beaconMat.opacity = 0;
     scanMat.opacity = THREE.MathUtils.damp(scanMat.opacity, 0, 10, dt);
-
-    if (ud.firstBloodCrown.visible) {
-      ud.firstBloodCrown.children[0].rotation.z += dt * 1.2;
-      ud.firstBloodCrown.children[1].rotation.z -= dt * 0.8;
-    }
   }
 
   if (ud.selected) {
     ud.selectRing.rotation.z += dt * 2.2;
   }
 
-  // v0.3 & v0.4 默认在每台服务器上方悬浮轻量级清晰中文短标签 + 发光状态点，尺寸精巧不遮挡下方 3D 硬件模型
+  // 默认在每台服务器上方悬浮轻量级清晰中文短标签 + 发光状态点，尺寸精巧不遮挡下方 3D 硬件模型
   const shouldShowLabel =
     ud.labelMode === 'full' ||
-    (ud.labelMode === 'compact' &&
-      (isV03OrV04
-        ? true
-        : ud.version === '0.2'
-        ? ud.hovered || ud.selected || ud.failFlashTimer > 0
-        : ud.hovered || ud.selected || ud.state !== 'idle' || ud.failFlashTimer > 0)) ||
+    ud.labelMode === 'compact' ||
     (ud.labelMode === 'hover' && (ud.hovered || ud.selected));
 
   ud.label.visible = shouldShowLabel;
   if (shouldShowLabel) {
-    const baseLabelW = isV03
-      ? ud.hovered || ud.selected
-        ? 1.12
-        : 0.88
-      : isV03OrV04
-      ? ud.hovered || ud.selected
-        ? 1.38
-        : 1.12
-      : ud.hovered || ud.selected
-      ? 1.72
-      : 1.38;
-    const baseLabelH = isV03
-      ? ud.hovered || ud.selected
-        ? 0.38
-        : 0.30
-      : isV03OrV04
-      ? ud.hovered || ud.selected
-        ? 0.45
-        : 0.36
-      : ud.hovered || ud.selected
-      ? 0.58
-      : 0.46;
+    const baseLabelW = ud.hovered || ud.selected ? 1.12 : 0.88;
+    const baseLabelH = ud.hovered || ud.selected ? 0.38 : 0.30;
     let flipY = 1.0;
     if (ud.labelFlipTimer > 0) {
       ud.labelFlipTimer = Math.max(0, ud.labelFlipTimer - dt);

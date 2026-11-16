@@ -60,10 +60,7 @@ interface DirectorConsoleProps {
 }
 
 const VERSION_OPTIONS: { value: SandboxVersion; label: string }[] = [
-  { value: '0.1', label: 'v0.1 经典工业版' },
-  { value: '0.2', label: 'v0.2 全息星际版' },
   { value: '0.3', label: 'v0.3 暗黑钛金版' },
-  { value: '0.4', label: 'v0.4 未来沙盘版' },
   { value: '0.5', label: 'v0.5 中央突击版' },
 ];
 

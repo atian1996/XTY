@@ -21,6 +21,32 @@ function drawCutCornerRect(
   ctx.closePath();
 }
 
+/**
+ * 零 CPU 阻塞的柔润湿感光晕描边（替代缓慢的 Canvas2D shadowBlur 高斯卷积，兼顾柔润霓虹微光与极致帧率）
+ */
+function strokeMoistNeon(
+  ctx: CanvasRenderingContext2D,
+  coreColor: string,
+  glowRgbaOuter: string,
+  glowRgbaMid: string,
+  coreWidth = 2.2
+) {
+  ctx.save();
+  ctx.shadowBlur = 0;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = coreWidth * 3.8;
+  ctx.strokeStyle = glowRgbaOuter;
+  ctx.stroke();
+  ctx.lineWidth = coreWidth * 2.1;
+  ctx.strokeStyle = glowRgbaMid;
+  ctx.stroke();
+  ctx.lineWidth = coreWidth;
+  ctx.strokeStyle = coreColor;
+  ctx.stroke();
+  ctx.restore();
+}
+
 const _rackFrontTexPool: {
   texture: THREE.CanvasTexture;
   stepLights: () => void;
@@ -236,13 +262,13 @@ export function createZoneTelemetrySprite(zone: ZoneConfig, maxAnisotropy = 4) {
     ctx.fillStyle = 'rgba(10, 18, 34, 0.90)';
     ctx.fill();
 
-    ctx.save();
-    ctx.shadowColor = flashWhite ? 'rgba(226, 232, 240, 0.7)' : 'rgba(0, 212, 255, 0.62)';
-    ctx.shadowBlur = 9;
-    ctx.lineWidth = flashWhite ? 4.5 : 2.8;
-    ctx.strokeStyle = flashWhite ? '#e2e8f0' : '#00d4ff';
-    ctx.stroke();
-    ctx.restore();
+    strokeMoistNeon(
+      ctx,
+      flashWhite ? '#e2e8f0' : '#00d4ff',
+      flashWhite ? 'rgba(226, 232, 240, 0.18)' : 'rgba(0, 212, 255, 0.16)',
+      flashWhite ? 'rgba(226, 232, 240, 0.38)' : 'rgba(0, 212, 255, 0.36)',
+      flashWhite ? 4.0 : 2.5
+    );
 
     // 标题行
     ctx.fillStyle = zone.colorHex;
@@ -498,15 +524,13 @@ export function createChallengeHoloLabel(
         : 'rgba(4, 10, 22, 0.86)';
       ctx.fill();
 
-      ctx.save();
-      ctx.shadowColor = isAttackingOrFailed
-        ? 'rgba(255, 59, 24, 0.68)'
-        : 'rgba(0, 216, 255, 0.66)';
-      ctx.shadowBlur = extra.hovered ? 12 : 8;
-      ctx.lineWidth = extra.hovered ? 3.2 : 2.2;
-      ctx.strokeStyle = borderCol;
-      ctx.stroke();
-      ctx.restore();
+      strokeMoistNeon(
+        ctx,
+        borderCol,
+        isAttackingOrFailed ? 'rgba(255, 59, 24, 0.18)' : 'rgba(0, 216, 255, 0.18)',
+        isAttackingOrFailed ? 'rgba(255, 59, 24, 0.38)' : 'rgba(0, 216, 255, 0.38)',
+        extra.hovered ? 3.0 : 2.1
+      );
 
       // 顶部与底部发丝级青/红高光微刻度线
       ctx.fillStyle = borderCol;
@@ -572,15 +596,13 @@ export function createChallengeHoloLabel(
         : 'rgba(4, 10, 20, 0.86)';
       ctx.fill();
 
-      ctx.save();
-      ctx.shadowColor = isAttackingOrFailed
-        ? 'rgba(255, 59, 31, 0.65)'
-        : 'rgba(0, 212, 255, 0.65)';
-      ctx.shadowBlur = extra.hovered ? 12 : 8;
-      ctx.lineWidth = extra.hovered ? 3.2 : 2.2;
-      ctx.strokeStyle = borderCol;
-      ctx.stroke();
-      ctx.restore();
+      strokeMoistNeon(
+        ctx,
+        borderCol,
+        isAttackingOrFailed ? 'rgba(255, 59, 31, 0.18)' : 'rgba(0, 212, 255, 0.18)',
+        isAttackingOrFailed ? 'rgba(255, 59, 31, 0.38)' : 'rgba(0, 212, 255, 0.38)',
+        extra.hovered ? 3.0 : 2.1
+      );
 
       // 顶部四角微刻度装饰
       ctx.fillStyle = borderCol;
@@ -649,13 +671,13 @@ export function createChallengeHoloLabel(
     ctx.fillStyle = extra.hovered ? 'rgba(12, 22, 40, 0.95)' : 'rgba(8, 15, 28, 0.88)';
     ctx.fill();
 
-    ctx.save();
-    ctx.shadowColor = borderHex;
-    ctx.shadowBlur = extra.hovered ? 12 : 8;
-    ctx.lineWidth = extra.hovered ? 4.0 : 2.6;
-    ctx.strokeStyle = borderHex;
-    ctx.stroke();
-    ctx.restore();
+    strokeMoistNeon(
+      ctx,
+      borderHex,
+      'rgba(0, 212, 255, 0.16)',
+      'rgba(0, 212, 255, 0.34)',
+      extra.hovered ? 3.6 : 2.4
+    );
 
     // 左侧分区色条
     ctx.fillStyle = zoneColorHex;
@@ -829,8 +851,7 @@ function drawV02VectorIcon(
   ctx.lineWidth = glareFree ? 5.2 : 7;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.shadowColor = colorHex;
-  ctx.shadowBlur = glareFree ? 0 : 14;
+  ctx.shadowBlur = 0;
 
   if (icon === 'cloud') {
     // 云端上传图标 (Cloud + Up Arrow)
@@ -1000,12 +1021,15 @@ export function createV02ZonePlaqueSprite(zone: ZoneConfig, maxAnisotropy = 4) {
     ctx.fill();
 
     // 柔润霓虹外发光边框 (Soft moist cyan glow)
-    ctx.shadowColor = 'rgba(0, 212, 255, 0.72)';
-    ctx.shadowBlur = flashWhite ? 18 : 11;
-    ctx.lineWidth = flashWhite ? 6 : 4.2;
-    ctx.strokeStyle = flashWhite ? '#ffffff' : cHex;
-    ctx.stroke();
     ctx.restore();
+    drawCutCornerRect(ctx, padX, padY, w, h, 34);
+    strokeMoistNeon(
+      ctx,
+      flashWhite ? '#ffffff' : cHex,
+      'rgba(0, 212, 255, 0.16)',
+      'rgba(0, 212, 255, 0.36)',
+      flashWhite ? 5.0 : 3.6
+    );
 
     // 内层细线装饰框
     drawCutCornerRect(ctx, padX + 12, padY + 12, w - 24, h - 24, 26);
@@ -1019,7 +1043,7 @@ export function createV02ZonePlaqueSprite(zone: ZoneConfig, maxAnisotropy = 4) {
     ctx.fillRect(padX + w - 250, padY + h - 4, 180, 7);
 
     // 2. 左侧发光矢量大图标
-    drawV02VectorIcon(ctx, zone.v02Icon, 168, 182, cHex);
+    drawV02VectorIcon(ctx, zone.v02Icon, 168, 182, cHex, true);
 
     // 3. 右上分区名与实时比分状态
     ctx.fillStyle = '#f8fafc';
@@ -1053,8 +1077,6 @@ export function createV02ZonePlaqueSprite(zone: ZoneConfig, maxAnisotropy = 4) {
     ctx.fill();
 
     ctx.save();
-    ctx.shadowColor = cHex;
-    ctx.shadowBlur = 14;
     ctx.fillStyle = cHex;
     ctx.beginPath();
     ctx.roundRect(barX, bar1Y, bar1W, barH, 15);
@@ -1072,8 +1094,6 @@ export function createV02ZonePlaqueSprite(zone: ZoneConfig, maxAnisotropy = 4) {
     ctx.fill();
 
     ctx.save();
-    ctx.shadowColor = cHex;
-    ctx.shadowBlur = 12;
     ctx.fillStyle = threats > 0 ? '#ff9f43' : cHex;
     ctx.beginPath();
     ctx.roundRect(barX, bar2Y, bar2W, barH, 15);
@@ -1116,8 +1136,6 @@ export function createGpuFanFaceTexture(maxAnisotropy = 4): THREE.CanvasTexture 
     const cy = 132;
     ctx.save();
     ctx.strokeStyle = '#00d4ff';
-    ctx.shadowColor = '#00d4ff';
-    ctx.shadowBlur = 10;
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.arc(cx, cy, 42, 0, Math.PI * 2);
@@ -1610,11 +1628,6 @@ export function createV03FloorProjectionMesh(maxAnisotropy = 4): {
 
     // 1. 极细六边形柔润青光内轮廓线 (Soft moist cyan outline)
     const hexR = 476;
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 212, 255, 0.65)';
-    ctx.shadowBlur = 10;
-    ctx.strokeStyle = 'rgba(0, 212, 255, 0.62)';
-    ctx.lineWidth = 2.4;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
@@ -1624,8 +1637,13 @@ export function createV03FloorProjectionMesh(maxAnisotropy = 4): {
       else ctx.lineTo(hx, hy);
     }
     ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
+    strokeMoistNeon(
+      ctx,
+      'rgba(0, 216, 255, 0.68)',
+      'rgba(0, 212, 255, 0.10)',
+      'rgba(0, 212, 255, 0.24)',
+      2.2
+    );
 
     // 次级内圈极细六边形装甲接缝线 (Secondary recessed alloy seam)
     const innerHexR = 448;
@@ -1744,9 +1762,9 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
       depthWrite: false,
     })
   );
-  // 尺寸克制优雅，悬浮于平台与所有单机设备上方，绝不遮挡下方 3D 硬件模型
-  sprite.scale.set(2.68, 0.725, 1);
-  sprite.position.set(0, 4.68, 0);
+  // 尺寸克制优雅，悬浮于平台与所有单机设备上方，在平视倾斜视角下依然紧密贴合所属分区
+  sprite.scale.set(2.58, 0.70, 1);
+  sprite.position.set(0, 3.45, 0);
 
   const v03ZhTitle = V03_ZONE_CHINESE_TITLES[zone.id] || zone.shortName;
   const v04ZhTitle = V04_ZONE_CHINESE_TITLES[zone.id] || zone.shortName;
@@ -1777,13 +1795,13 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
       ctx.fillStyle = 'rgba(4, 11, 24, 0.86)';
       ctx.fill();
 
-      ctx.save();
-      ctx.shadowColor = 'rgba(0, 216, 255, 0.72)';
-      ctx.shadowBlur = 12;
-      ctx.lineWidth = 2.4;
-      ctx.strokeStyle = '#00d8ff';
-      ctx.stroke();
-      ctx.restore();
+      strokeMoistNeon(
+        ctx,
+        '#00d8ff',
+        'rgba(0, 216, 255, 0.18)',
+        'rgba(0, 216, 255, 0.38)',
+        2.3
+      );
 
       // 内层发丝级暗青校准线
       drawCutCornerRect(ctx, padX + 10, padY + 10, w - 20, h - 20, 19);
@@ -1865,13 +1883,13 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
     ctx.fillStyle = 'rgba(4, 10, 22, 0.84)';
     ctx.fill();
 
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 212, 255, 0.68)';
-    ctx.shadowBlur = 11;
-    ctx.lineWidth = 2.2;
-    ctx.strokeStyle = '#00c4f0';
-    ctx.stroke();
-    ctx.restore();
+    strokeMoistNeon(
+      ctx,
+      '#00c4f0',
+      'rgba(0, 212, 255, 0.16)',
+      'rgba(0, 212, 255, 0.36)',
+      2.1
+    );
 
     drawCutCornerRect(ctx, padX + 9, padY + 9, w - 18, h - 18, 18);
     ctx.lineWidth = 1.0;
