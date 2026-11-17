@@ -112,14 +112,15 @@ const INITIAL_EVENTS: BattleEvent[] = [
   },
   {
     id: 'ev-init-5',
-    timestamp: '10:29:47',
-    type: 'failed',
-    teamName: '苍穹逆向联队',
+    timestamp: '10:29:51',
+    type: 'firstBlood',
+    teamName: '网络护卫队',
     teamColor: '#ff6b35',
-    challengeId: 'KDB-03',
-    challengeName: '知识图谱 Cypher 注入',
-    zoneId: 'knowledge',
-    zoneName: '知识库',
+    challengeId: 'CMP-01',
+    challengeName: 'NVIDIA 容器挂载逃逸',
+    zoneId: 'compute',
+    zoneName: '算力调度',
+    points: 600,
   },
   {
     id: 'ev-init-4',
@@ -135,14 +136,15 @@ const INITIAL_EVENTS: BattleEvent[] = [
   },
   {
     id: 'ev-init-3',
-    timestamp: '10:27:19',
-    type: 'attempt',
-    teamName: '网络护卫队',
-    teamColor: '#ff6b35',
-    challengeId: 'AI-02',
-    challengeName: '提示词注入绕过',
-    zoneId: 'ai-access',
-    zoneName: 'AI接入',
+    timestamp: '10:26:42',
+    type: 'firstBlood',
+    teamName: '星渊红队',
+    teamColor: '#ffd24a',
+    challengeId: 'AGT-01',
+    challengeName: '工具调用 SSRF 穿透',
+    zoneId: 'agent',
+    zoneName: '智能体',
+    points: 550,
   },
   {
     id: 'ev-init-2',
@@ -264,23 +266,27 @@ export default function App() {
       if (!zone || !ch) return;
 
       const ts = formatNow();
-      const ev: BattleEvent = {
-        id: `ev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        timestamp: ts,
-        type,
-        teamName,
-        teamColor: team.color,
-        challengeId: ch.id,
-        challengeName: ch.name,
-        zoneId: zone.id,
-        zoneName: zone.shortName,
-        points,
-      };
-      setBattleEvents((prev) => [ev, ...prev.slice(0, 14)]);
+      const resolvedPoints =
+        type === 'solved' || type === 'firstBlood' ? (points ?? ch.points) : points;
+      if (type === 'solved' || type === 'firstBlood') {
+        const ev: BattleEvent = {
+          id: `ev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: ts,
+          type,
+          teamName,
+          teamColor: team.color,
+          challengeId: ch.id,
+          challengeName: ch.name,
+          zoneId: zone.id,
+          zoneName: zone.shortName,
+          points: resolvedPoints,
+        };
+        setBattleEvents((prev) => [ev, ...prev.slice(0, 14)]);
+      }
       recordMetricDelta(type, zone.id);
 
       if (type === 'firstBlood') {
-        const earnedPoints = points ?? ch.points;
+        const earnedPoints = resolvedPoints ?? ch.points;
         setFirstBloodCards((prev) => [
           {
             id: `fb-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,

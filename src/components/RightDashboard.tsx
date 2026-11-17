@@ -74,9 +74,12 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
     }
   }, [teams]);
 
-  // 保留最近 15 条事件，按时间正序从底部滑入（最新在最下方）
+  // 仅保留成功解题和一血事件（最近 15 条，按时间正序从底部滑入，最新在最下方）
   const timelineEvents = useMemo(() => {
-    return battleEvents.slice(0, 15).reverse();
+    return battleEvents
+      .filter((ev) => ev.type === 'solved' || ev.type === 'firstBlood')
+      .slice(0, 15)
+      .reverse();
   }, [battleEvents]);
 
   const eventListRef = useRef<HTMLDivElement | null>(null);
@@ -316,8 +319,8 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
           }}
         >
           {timelineEvents.map((ev) => {
-            const isSuccess = ev.type === 'solved' || ev.type === 'firstBlood';
-            const isAttemptOrFail = ev.type === 'failed' || ev.type === 'attempt';
+            const isFirstBlood = ev.type === 'firstBlood';
+            const pointsValue = ev.points ?? 0;
 
             return (
               <div
@@ -339,13 +342,13 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
                 <div className="relative flex flex-col items-center shrink-0 w-3">
                   <span
                     className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
-                      isSuccess
-                        ? wireframeMode
-                          ? 'bg-[#00d4ff] shadow-[0_0_6px_#00d4ff]'
-                          : 'bg-[#00ff88] shadow-[0_0_6px_#00ff88]'
-                        : wireframeMode
-                        ? 'bg-[#ff3300] shadow-[0_0_6px_#ff3300]'
-                        : 'bg-[#ff6b35] shadow-[0_0_6px_#ff6b35]'
+                      wireframeMode
+                        ? isFirstBlood
+                          ? 'bg-[#ffd24a] shadow-[0_0_6px_#ffd24a]'
+                          : 'bg-[#00d4ff] shadow-[0_0_6px_#00d4ff]'
+                        : isFirstBlood
+                        ? 'bg-[#ffd24a] shadow-[0_0_6px_#ffd24a]'
+                        : 'bg-[#00ff88] shadow-[0_0_6px_#00ff88]'
                     }`}
                   />
                   <span
@@ -358,54 +361,41 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
 
                 {/* 右侧内容文本 */}
                 <div className="flex-1 min-w-0 text-xs leading-snug">
-                  {isSuccess ? (
-                    <p className={wireframeMode ? 'text-[#00d4ff]' : 'text-[#00ff88]'}>
-                      <span className="font-medium text-white">{ev.teamName}</span> 解出{' '}
-                      <span className="text-white">【{ev.zoneName}】</span>{' '}
-                      {ev.challengeName}
-                      {ev.type === 'firstBlood' && (
-                        <span
-                          className={`ml-1 text-[10px] ${
-                            wireframeMode
-                              ? 'font-hud-mono text-white border border-[#00d4ff] px-1'
-                              : 'font-tech-num text-[#ffd24a]'
-                          }`}
-                        >
-                          [一血]
-                        </span>
-                      )}
-                      {typeof ev.points === 'number' && (
-                        <span
-                          className={
-                            wireframeMode
-                              ? 'text-white'
-                              : ev.type === 'firstBlood'
-                              ? 'text-[#ffd24a]'
-                              : 'text-[#00ff88]'
-                          }
-                        >
-                          ，获得
-                          <span
-                            className={`mx-0.5 font-bold ${
-                              wireframeMode ? 'font-hud-mono text-[#00d4ff]' : 'font-tech-num'
-                            }`}
-                          >
-                            {ev.points}
-                          </span>
-                          分
-                        </span>
-                      )}
-                    </p>
-                  ) : isAttemptOrFail ? (
-                    <p className={wireframeMode ? 'text-[#ff3300]' : 'text-[#ff6b35]'}>
+                  {isFirstBlood ? (
+                    <p className={wireframeMode ? 'text-[#00d4ff]' : 'text-[#ffd24a]'}>
                       <span className="font-medium text-white">{ev.teamName}</span>{' '}
-                      {ev.type === 'failed' ? '尝试提交' : '正在破解'}{' '}
+                      成功拿下{' '}
                       <span className="text-white">【{ev.zoneName}】</span>{' '}
-                      {ev.type === 'failed'
-                        ? `${ev.challengeName} 失败`
-                        : ev.challengeName}
+                      {ev.challengeName}一血，获得{' '}
+                      <span
+                        className={`font-bold ${
+                          wireframeMode
+                            ? 'font-hud-mono text-[#ffd24a]'
+                            : 'font-tech-num text-[#ffd24a]'
+                        }`}
+                      >
+                        {pointsValue}
+                      </span>{' '}
+                      分！
                     </p>
-                  ) : null}
+                  ) : (
+                    <p className={wireframeMode ? 'text-[#00d4ff]' : 'text-[#00ff88]'}>
+                      <span className="font-medium text-white">{ev.teamName}</span>{' '}
+                      解出了{' '}
+                      <span className="text-white">【{ev.zoneName}】</span>{' '}
+                      {ev.challengeName}，获得{' '}
+                      <span
+                        className={`font-bold ${
+                          wireframeMode
+                            ? 'font-hud-mono text-white'
+                            : 'font-tech-num text-[#00ff88]'
+                        }`}
+                      >
+                        {pointsValue}
+                      </span>{' '}
+                      分。
+                    </p>
+                  )}
                 </div>
               </div>
             );
