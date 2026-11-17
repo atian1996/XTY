@@ -36,6 +36,8 @@ import {
   accessPipeFragmentShader,
   accessPipeVertexShader,
   attackBeamFragmentShader,
+  attackBeamHaloFragmentShader,
+  attackBeamHaloVertexShader,
   attackBeamVertexShader,
   busRingFragmentShader,
   busRingVertexShader,
@@ -44,6 +46,8 @@ import {
   groundDiscVertexShader,
   hexShieldFragmentShader,
   hexShieldVertexShader,
+  risingVortexFragmentShader,
+  risingVortexVertexShader,
   skyDomeFragmentShader,
   skyDomeVertexShader,
   VignetteChromaticShader,
@@ -119,6 +123,8 @@ interface ActiveBeamRuntime {
   curve: THREE.Curve<THREE.Vector3>;
   tubeMesh: THREE.Mesh;
   beamMat: THREE.ShaderMaterial;
+  haloMesh?: THREE.Mesh;
+  haloMat?: THREE.ShaderMaterial;
   probeMesh: THREE.Mesh;
   trailLine: THREE.Line;
   trailPositions: Float32Array;
@@ -162,6 +168,24 @@ interface DataReturnRuntime {
 interface ShieldDomeRuntime {
   mesh: THREE.Mesh;
   mat: THREE.ShaderMaterial;
+  wireMesh: THREE.LineSegments;
+  wireMat: THREE.LineBasicMaterial;
+  elapsed: number;
+  duration: number;
+}
+
+interface RisingVortexRuntime {
+  group: THREE.Group;
+  outerCyl: THREE.Mesh;
+  innerCyl: THREE.Mesh;
+  outerMat: THREE.ShaderMaterial;
+  innerMat: THREE.ShaderMaterial;
+  baseRing: THREE.Mesh;
+  baseRingMat: THREE.MeshBasicMaterial;
+  spiralMeshes: THREE.Mesh[];
+  spiralMat: THREE.MeshBasicMaterial;
+  particles: THREE.Points;
+  particleSpeeds: Float32Array;
   elapsed: number;
   duration: number;
 }
@@ -341,6 +365,7 @@ export class CyberRangeScene {
   private particleBursts: ParticleBurstRuntime[] = [];
   private dataReturns: DataReturnRuntime[] = [];
   private shieldDomes: ShieldDomeRuntime[] = [];
+  private risingVortexes: RisingVortexRuntime[] = [];
   private floatTexts: FloatTextRuntime[] = [];
   private groundRipples: GroundRippleRuntime[] = [];
   private busPulses: CircularBusPulseRuntime[] = [];
@@ -2077,6 +2102,11 @@ export class CyberRangeScene {
         const nodeUd = node.userData as ChallengeNodeUserData;
         nodeUd.label.position.y = labelHeights[idx % 5];
         nodeUd.topSolversSprite.position.y = topSolverHeights[idx % 5];
+        nodeUd.onAttemptExpired = () => {
+          const zr = this.zones.get(zCfg.id);
+          if (zr) this.refreshZoneTelemetry(zr);
+          this.onStatsSync?.();
+        };
 
         platformGroup.add(node);
         nodesMap.set(ch.id, node);
@@ -3890,49 +3920,36 @@ export class CyberRangeScene {
       this.applyWireframeTransitionMix(this.targetWireframeMix);
     }
 
-    // 4) 重建当前活跃激光束轨迹，从正中心向外发射刺眼亮红色细直激光线
-    const snapshot = this.activeBeams.map((b) => ({
-      challengeId: b.challengeId,
-      teamName: b.teamName,
-    }));
+    // 4) 0.1版保留赛博激光线，0.2版不常态化显示任何固定红色攻击线路
     for (let i = this.activeBeams.length - 1; i >= 0; i--) {
       this.disposeBeam(this.activeBeams[i]);
     }
     this.activeBeams = [];
 
-    const minBeams = isV05 ? 4 : 3;
-    if (snapshot.length < minBeams) {
-      const defaultTargets = isV05
-        ? ['AI-02', 'INF-02', 'KDB-03', 'OPS-02']
-        : ['AI-02', 'INF-02', 'OPS-02'];
+    if (!isV05) {
+      const defaultTargets = ['AI-02', 'INF-02', 'OPS-02'];
       defaultTargets.forEach((cid) => {
-        if (!snapshot.some((s) => s.challengeId === cid)) {
-          snapshot.push({ challengeId: cid, teamName: '网络护卫队' });
+        const found = this.findChallengeAndZone(cid);
+        if (found) {
+          if (found.challenge.state === 'idle') {
+            found.challenge.state = 'attacking';
+            found.challenge.activeAttacker = '网络护卫队';
+            (found.node.userData as ChallengeNodeUserData).transitionState('attacking', {
+              team: '网络护卫队',
+            });
+          }
+          const curve = this.buildAttackPath(found.node, found.zone);
+          this.spawnBeamInternal({
+            challenge: found.challenge,
+            zone: found.zone,
+            node: found.node,
+            teamName: '网络护卫队',
+            curve,
+            instantArrive: true,
+          });
         }
       });
     }
-
-    snapshot.forEach((item) => {
-      const found = this.findChallengeAndZone(item.challengeId);
-      if (found) {
-        if (found.challenge.state === 'idle') {
-          found.challenge.state = 'attacking';
-          found.challenge.activeAttacker = item.teamName;
-          (found.node.userData as ChallengeNodeUserData).transitionState('attacking', {
-            team: item.teamName,
-          });
-        }
-        const curve = this.buildAttackPath(found.node, found.zone);
-        this.spawnBeamInternal({
-          challenge: found.challenge,
-          zone: found.zone,
-          node: found.node,
-          teamName: item.teamName,
-          curve,
-          instantArrive: true,
-        });
-      }
-    });
 
     const pose = this.getDefaultOverviewPose(this.currentCameraMode);
     if (immediateCamera) {
@@ -3954,30 +3971,8 @@ export class CyberRangeScene {
     return this.currentVersion;
   }
 
-  private seedInitialActiveBeams(zonesData: ZoneConfig[]) {
-    if (this.activeBeams.length > 0) {
-      this.refreshAttackTelemetry();
-      return;
-    }
-    zonesData.forEach((z) => {
-      z.challenges.forEach((ch) => {
-        if (ch.state === 'attacking') {
-          const zRuntime = this.zones.get(z.id);
-          const node = zRuntime?.nodes.get(ch.id);
-          if (zRuntime && node) {
-            const curve = this.buildAttackPath(node, zRuntime);
-            this.spawnBeamInternal({
-              challenge: ch,
-              zone: zRuntime,
-              node,
-              teamName: ch.activeAttacker || '网络护卫队',
-              curve,
-              instantArrive: true,
-            });
-          }
-        }
-      });
-    });
+  private seedInitialActiveBeams(_zonesData: ZoneConfig[]) {
+    // 0.2版默认不常态化显示攻击红线，所有攻击红线均由真实/模拟事件触发并在到达设备 1s 后消失
     this.refreshAttackTelemetry();
   }
 
@@ -4000,6 +3995,11 @@ export class CyberRangeScene {
     teamName: string;
     curve: THREE.Curve<THREE.Vector3>;
     instantArrive?: boolean;
+    colorHex?: number;
+    radiusScale?: number;
+    intensity?: number;
+    duration?: number;
+    withGoldenHalo?: boolean;
     onArrive?: () => void;
   }) {
     const existingIdx = this.activeBeams.findIndex((b) => b.challengeId === opts.challenge.id);
@@ -4008,17 +4008,18 @@ export class CyberRangeScene {
       this.activeBeams.splice(existingIdx, 1);
     }
 
-    // 0.1版采用刺眼亮红色 0xff1100 与高强度 1.65 (突破 threshold 0.9 形成锐利红光束)；0.2版保持 0xff2614 与 1.32
     const isV01Tron = this.currentVersion === '0.3';
-    const beamRadius = isV01Tron ? 0.013 : 0.016;
-    const beamColorHex = isV01Tron ? 0xff1100 : 0xff2614;
+    const baseRadius = isV01Tron ? 0.013 : 0.018;
+    const beamRadius = baseRadius * (opts.radiusScale ?? 1.0);
+    const beamColorHex = opts.colorHex ?? (isV01Tron ? 0xff1100 : 0xff2614);
+    const beamIntensity = opts.intensity ?? (isV01Tron ? 1.65 : 1.38);
 
-    const tubeGeo = new THREE.TubeGeometry(opts.curve, 96, beamRadius, 6, false);
+    const tubeGeo = new THREE.TubeGeometry(opts.curve, 96, beamRadius, 8, false);
     const beamMat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: this.sharedUniforms.uTime,
         uProgress: { value: opts.instantArrive ? 1.0 : 0.0 },
-        uIntensity: { value: isV01Tron ? 1.65 : 1.32 },
+        uIntensity: { value: beamIntensity },
         uOpacity: { value: opts.instantArrive ? 0.94 : 0.98 },
         uColor: { value: new THREE.Color(beamColorHex) },
       },
@@ -4030,9 +4031,31 @@ export class CyberRangeScene {
     const tubeMesh = new THREE.Mesh(tubeGeo, beamMat);
     this.fxGroup.add(tubeMesh);
 
+    let haloMesh: THREE.Mesh | undefined;
+    let haloMat: THREE.ShaderMaterial | undefined;
+    if (opts.withGoldenHalo) {
+      const haloGeo = new THREE.TubeGeometry(opts.curve, 96, beamRadius * 3.1, 10, false);
+      haloMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: this.sharedUniforms.uTime,
+          uProgress: { value: opts.instantArrive ? 1.0 : 0.0 },
+          uIntensity: { value: 1.9 },
+          uOpacity: { value: 0.92 },
+          uColor: { value: new THREE.Color(0xffb800) },
+        },
+        vertexShader: attackBeamHaloVertexShader,
+        fragmentShader: attackBeamHaloFragmentShader,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      haloMesh = new THREE.Mesh(haloGeo, haloMat);
+      this.fxGroup.add(haloMesh);
+    }
+
     const probeMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.085, 12, 12),
-      new THREE.MeshBasicMaterial({ color: 0xff3300 })
+      new THREE.SphereGeometry(opts.withGoldenHalo ? 0.16 : 0.09, 12, 12),
+      new THREE.MeshBasicMaterial({ color: opts.withGoldenHalo ? 0xffe066 : beamColorHex })
     );
     const startPt = opts.curve.getPointAt(opts.instantArrive ? 1 : 0);
     probeMesh.position.copy(startPt);
@@ -4052,13 +4075,11 @@ export class CyberRangeScene {
       new THREE.LineBasicMaterial({
         color: beamColorHex,
         transparent: true,
-        opacity: 0.75,
+        opacity: opts.withGoldenHalo ? 0.95 : 0.78,
       })
     );
     trailLine.visible = !opts.instantArrive;
     this.fxGroup.add(trailLine);
-
-    let solvingCard: THREE.Mesh | undefined;
 
     const runtime: ActiveBeamRuntime = {
       id: `${opts.challenge.id}-${Date.now()}`,
@@ -4068,17 +4089,18 @@ export class CyberRangeScene {
       curve: opts.curve,
       tubeMesh,
       beamMat,
+      haloMesh,
+      haloMat,
       probeMesh,
       trailLine,
       trailPositions,
-      solvingCard,
       progress: opts.instantArrive ? 1.0 : 0.0,
-      duration: 0.82,
+      duration: opts.duration ?? 0.72,
       arrived: Boolean(opts.instantArrive),
       retiring: false,
       retireTimer: 0,
       targetColor: new THREE.Color(beamColorHex),
-      targetScaleXZ: 1.0,
+      targetScaleXZ: opts.withGoldenHalo ? 1.45 : 1.0,
       onArriveCallback: opts.onArrive,
     };
 
@@ -4090,6 +4112,11 @@ export class CyberRangeScene {
     this.fxGroup.remove(beam.tubeMesh, beam.probeMesh, beam.trailLine);
     beam.tubeMesh.geometry.dispose();
     beam.beamMat.dispose();
+    if (beam.haloMesh && beam.haloMat) {
+      this.fxGroup.remove(beam.haloMesh);
+      beam.haloMesh.geometry.dispose();
+      beam.haloMat.dispose();
+    }
     beam.probeMesh.geometry.dispose();
     (beam.probeMesh.material as THREE.Material).dispose();
     beam.trailLine.geometry.dispose();
@@ -4118,35 +4145,29 @@ export class CyberRangeScene {
 
     this.highlightCrossLinksForZone(zone.config.id);
 
-    const orb =
-      this.playerOrbs.find((o) => o.team.name === teamName) ||
-      this.playerOrbs[Math.floor(Math.random() * this.playerOrbs.length)];
+    this.muzzleChargeTimer = 0.35;
+    const curve = this.buildAttackPath(node, zone);
 
-    const launchBeamNow = () => {
-      this.muzzleChargeTimer = 0.35;
-      const curve = this.buildAttackPath(node, zone);
-
-      this.spawnBeamInternal({
-        challenge,
-        zone,
-        node,
-        teamName,
-        curve,
-        onArrive: () => {
-          this.spawnShockwave(node, 0xff2a1f, 2.2, 0.65, 0);
-          if (ud.state !== 'solved') {
-            ud.transitionState('attacking', { team: teamName });
-          }
-          this.refreshZoneTelemetry(zone);
-          this.refreshAttackTelemetry();
-          this.onStatsSync?.();
-        },
-      });
+    const beam = this.spawnBeamInternal({
+      challenge,
+      zone,
+      node,
+      teamName,
+      curve,
+      duration: 0.7,
+    });
+    beam.onArriveCallback = () => {
+      this.spawnShockwave(node, 0xff2a1f, 2.2, 0.65, 0);
+      // 尝试解题动效持续 10s 后自动消失（除非新队伍触发尝试解题事件重置定时器）
+      ud.startAttemptEffect(teamName, 10.0);
+      // 红色攻击线路到达设备后持续 1s 后消失
+      beam.retiring = true;
+      beam.retireTimer = 1.0;
+      this.refreshZoneTelemetry(zone);
       this.refreshAttackTelemetry();
+      this.onStatsSync?.();
     };
-
-    void orb;
-    launchBeamNow();
+    this.refreshAttackTelemetry();
   }
 
   public triggerFailed(challengeId: string, teamName: string, userInitiated = false) {
@@ -4163,6 +4184,7 @@ export class CyberRangeScene {
 
     const executeImpactFail = (beam?: ActiveBeamRuntime) => {
       soundFX.playFailed();
+      // 3D 球形护盾，持续 3s 后消失
       this.spawnHexShieldDome(node);
       this.spawnParticleBurst(node, 'failed');
       this.spawnShockwave(node, 0x0284c7, 3.2, 0.72, 0);
@@ -4180,8 +4202,9 @@ export class CyberRangeScene {
       }
 
       if (beam) {
+        // 红色攻击线路射向设备后持续 1s 后消失
         beam.retiring = true;
-        beam.retireTimer = 0.65;
+        beam.retireTimer = 1.0;
       }
 
       this.refreshZoneTelemetry(zone);
@@ -4193,11 +4216,11 @@ export class CyberRangeScene {
     const failBeamColor = 0xff2a1f;
     if (existingBeam) {
       existingBeam.targetColor.setHex(failBeamColor);
-      existingBeam.beamMat.uniforms.uIntensity.value = 1.3;
+      existingBeam.beamMat.uniforms.uIntensity.value = 1.35;
       if (existingBeam.arrived) {
         executeImpactFail(existingBeam);
       } else {
-        existingBeam.duration = 0.18;
+        existingBeam.duration = 0.22;
         existingBeam.onArriveCallback = () => executeImpactFail(existingBeam);
       }
     } else {
@@ -4208,9 +4231,9 @@ export class CyberRangeScene {
         node,
         teamName,
         curve,
+        duration: 0.36,
       });
       b.targetColor.setHex(failBeamColor);
-      b.duration = 0.35;
       b.onArriveCallback = () => executeImpactFail(b);
     }
   }
@@ -4257,9 +4280,16 @@ export class CyberRangeScene {
 
     const executeImpactSolve = (beam: ActiveBeamRuntime) => {
       soundFX.playSolved(isFirstBlood);
+      // 夺旗成功：设备底部向上射出并旋转的青绿色光效(3s)；一血事件：向上射出并旋转的金黄色光效(3s)
+      this.spawnRisingVortex(node, isFirstBlood ? 'firstBlood' : 'solved');
       this.spawnParticleBurst(node, 'solved');
-      this.spawnShockwave(node, 0x00d4ff, 3.8, 0.9, 0.0);
-      this.spawnShockwave(node, 0x0284c7, 3.8, 0.9, 0.08);
+      if (isFirstBlood) {
+        this.spawnShockwave(node, 0xffd24a, 4.2, 1.0, 0.0);
+        this.spawnShockwave(node, 0xffaa00, 3.6, 0.95, 0.1);
+      } else {
+        this.spawnShockwave(node, 0x00ffaa, 3.8, 0.9, 0.0);
+        this.spawnShockwave(node, 0x00d4ff, 3.4, 0.9, 0.08);
+      }
 
       ud.transitionState('solved', { team: teamName, firstBlood: isFirstBlood });
       this.spawnDataReturn(beam.curve);
@@ -4268,7 +4298,11 @@ export class CyberRangeScene {
       zone.targetScore = zone.config.score;
       zone.telemetryBounceTimer = 0.65;
       zone.edgeHighlightTimer = 1.5;
-      this.spawnGroundRipple(activeZonePos[0], activeZonePos[2], 0x00d4ff);
+      this.spawnGroundRipple(
+        activeZonePos[0],
+        activeZonePos[2],
+        isFirstBlood ? 0xffd24a : 0x00ff88
+      );
 
       this.targetPullOrigin.copy(this.controls.target);
       this.targetPullGoal
@@ -4276,8 +4310,9 @@ export class CyberRangeScene {
         .lerp(new THREE.Vector3(...activeZonePos), 0.15);
       this.targetPullTimer = 2.2;
 
+      // 攻击光束射向设备后持续 1s 后消失
       beam.retiring = true;
-      beam.retireTimer = 1.6;
+      beam.retireTimer = 1.0;
 
       this.refreshZoneTelemetry(zone, true);
       this.refreshAttackTelemetry();
@@ -4285,15 +4320,30 @@ export class CyberRangeScene {
     };
 
     const existingBeam = this.activeBeams.find((b) => b.challengeId === challengeId);
-    const solveBeamCol = 0x00d4ff;
-    if (existingBeam) {
-      existingBeam.targetColor.setHex(solveBeamCol);
+    if (isFirstBlood) {
+      // 一血事件：更明显的金色线条（加粗金核 + 金色外包体积光晕）射向对应设备
+      const curve = this.buildAttackPath(node, zone);
+      const b = this.spawnBeamInternal({
+        challenge,
+        zone,
+        node,
+        teamName,
+        curve,
+        colorHex: 0xffd24a,
+        radiusScale: 2.2,
+        intensity: 2.2,
+        duration: 0.52,
+        withGoldenHalo: true,
+      });
+      b.onArriveCallback = () => executeImpactSolve(b);
+    } else if (existingBeam && !existingBeam.retiring) {
+      existingBeam.targetColor.setHex(0xff2614);
       existingBeam.targetScaleXZ = 1.15;
-      existingBeam.beamMat.uniforms.uIntensity.value = 1.4;
+      existingBeam.beamMat.uniforms.uIntensity.value = 1.45;
       if (existingBeam.arrived) {
         executeImpactSolve(existingBeam);
       } else {
-        existingBeam.duration = 0.22;
+        existingBeam.duration = 0.24;
         existingBeam.onArriveCallback = () => executeImpactSolve(existingBeam);
       }
     } else {
@@ -4304,11 +4354,10 @@ export class CyberRangeScene {
         node,
         teamName,
         curve,
+        colorHex: 0xff2614,
+        intensity: 1.45,
+        duration: 0.44,
       });
-      b.targetColor.setHex(solveBeamCol);
-      b.targetScaleXZ = 1.15;
-      b.beamMat.uniforms.uIntensity.value = 1.4;
-      b.duration = 0.42;
       b.onArriveCallback = () => executeImpactSolve(b);
     }
   }
@@ -4322,13 +4371,14 @@ export class CyberRangeScene {
   private spawnHexShieldDome(node: THREE.Group) {
     const wp = new THREE.Vector3();
     node.getWorldPosition(wp);
-    wp.y += 1.1;
+    wp.y += 1.05;
 
-    const geo = new THREE.CircleGeometry(1.75, 6);
+    // 3D 球形能量护盾（带表面六边形力场与立体线框经纬壳，持续 3s 后消失）
+    const geo = new THREE.SphereGeometry(1.52, 36, 24);
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: this.sharedUniforms.uTime,
-        uOpacity: { value: 0.9 },
+        uOpacity: { value: 0.92 },
         uColor: { value: new THREE.Color(0x00d4ff) },
       },
       vertexShader: hexShieldVertexShader,
@@ -4336,18 +4386,171 @@ export class CyberRangeScene {
       transparent: true,
       side: THREE.DoubleSide,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(wp);
-    mesh.lookAt(0, wp.y + 1.5, 20);
-    mesh.scale.setScalar(0.3);
+    mesh.scale.setScalar(0.32);
+
+    const wireGeo = new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.545, 2));
+    const wireMat = new THREE.LineBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const wireMesh = new THREE.LineSegments(wireGeo, wireMat);
+    mesh.add(wireMesh);
+
     this.fxGroup.add(mesh);
 
     this.shieldDomes.push({
       mesh,
       mat,
+      wireMesh,
+      wireMat,
       elapsed: 0,
-      duration: 1.3,
+      duration: 3.0,
+    });
+  }
+
+  private spawnRisingVortex(node: THREE.Group, mode: 'solved' | 'firstBlood') {
+    const wp = new THREE.Vector3();
+    node.getWorldPosition(wp);
+    wp.y += 0.03;
+
+    const isFB = mode === 'firstBlood';
+    const primaryHex = isFB ? 0xffd24a : 0x00ffaa;
+    const secondaryHex = isFB ? 0xffa800 : 0x22ffd8;
+    const colH = isFB ? 4.0 : 3.5;
+
+    const group = new THREE.Group();
+    group.position.copy(wp);
+    group.scale.set(1, 0.1, 1);
+
+    // 1) 外层旋转升腾能量光柱
+    const outerGeo = new THREE.CylinderGeometry(1.16, 0.76, colH, 36, 1, true);
+    const outerMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: this.sharedUniforms.uTime,
+        uOpacity: { value: 0.0 },
+        uIntensity: { value: isFB ? 1.55 : 1.32 },
+        uColorPrimary: { value: new THREE.Color(primaryHex) },
+        uColorSecondary: { value: new THREE.Color(secondaryHex) },
+      },
+      vertexShader: risingVortexVertexShader,
+      fragmentShader: risingVortexFragmentShader,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const outerCyl = new THREE.Mesh(outerGeo, outerMat);
+    outerCyl.position.y = colH * 0.5;
+    group.add(outerCyl);
+
+    // 2) 内层高速反向旋转核心光束柱
+    const innerGeo = new THREE.CylinderGeometry(0.62, 0.46, colH * 1.08, 28, 1, true);
+    const innerMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: this.sharedUniforms.uTime,
+        uOpacity: { value: 0.0 },
+        uIntensity: { value: isFB ? 1.75 : 1.48 },
+        uColorPrimary: { value: new THREE.Color(secondaryHex) },
+        uColorSecondary: { value: new THREE.Color(0xffffff) },
+      },
+      vertexShader: risingVortexVertexShader,
+      fragmentShader: risingVortexFragmentShader,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const innerCyl = new THREE.Mesh(innerGeo, innerMat);
+    innerCyl.position.y = colH * 0.54;
+    group.add(innerCyl);
+
+    // 3) 设备底部发光发射环
+    const baseRingGeo = new THREE.RingGeometry(0.68, 1.15, 36);
+    const baseRingMat = new THREE.MeshBasicMaterial({
+      color: primaryHex,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const baseRing = new THREE.Mesh(baseRingGeo, baseRingMat);
+    baseRing.rotation.x = -Math.PI / 2;
+    baseRing.position.y = 0.03;
+    group.add(baseRing);
+
+    // 4) 3 条从设备底部向上螺旋射出的实体光带
+    const spiralMat = new THREE.MeshBasicMaterial({
+      color: primaryHex,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const spiralMeshes: THREE.Mesh[] = [];
+    for (let s = 0; s < 3; s++) {
+      const startAngle = (s / 3) * Math.PI * 2;
+      const pts: THREE.Vector3[] = [];
+      for (let k = 0; k <= 24; k++) {
+        const t = k / 24;
+        const a = startAngle + t * Math.PI * 2.5;
+        const r = THREE.MathUtils.lerp(0.76, 1.12, t);
+        pts.push(new THREE.Vector3(Math.cos(a) * r, t * colH, Math.sin(a) * r));
+      }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const sGeo = new THREE.TubeGeometry(curve, 32, isFB ? 0.036 : 0.028, 6, false);
+      const sMesh = new THREE.Mesh(sGeo, spiralMat);
+      group.add(sMesh);
+      spiralMeshes.push(sMesh);
+    }
+
+    // 5) 底部向上喷射旋转的光点粒子
+    const pCount = 28;
+    const pPos = new Float32Array(pCount * 3);
+    const particleSpeeds = new Float32Array(pCount);
+    for (let i = 0; i < pCount; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 0.52 + Math.random() * 0.56;
+      pPos[i * 3] = Math.cos(a) * r;
+      pPos[i * 3 + 1] = Math.random() * colH * 0.6;
+      pPos[i * 3 + 2] = Math.sin(a) * r;
+      particleSpeeds[i] = 1.6 + Math.random() * 1.8;
+    }
+    const pGeo = new THREE.BufferGeometry();
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    const pMat = new THREE.PointsMaterial({
+      color: secondaryHex,
+      size: isFB ? 0.16 : 0.13,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const particles = new THREE.Points(pGeo, pMat);
+    group.add(particles);
+
+    this.fxGroup.add(group);
+    this.risingVortexes.push({
+      group,
+      outerCyl,
+      innerCyl,
+      outerMat,
+      innerMat,
+      baseRing,
+      baseRingMat,
+      spiralMeshes,
+      spiralMat,
+      particles,
+      particleSpeeds,
+      elapsed: 0,
+      duration: 3.0,
     });
   }
 
@@ -5276,6 +5479,7 @@ export class CyberRangeScene {
         b.beamMat.uniforms.uColor.value.lerp(b.targetColor, Math.min(1, dt * 10));
         const sXZ = THREE.MathUtils.damp(b.tubeMesh.scale.x, b.targetScaleXZ, 10, dt);
         b.tubeMesh.scale.set(sXZ, 1, sXZ);
+        b.haloMesh?.scale.set(sXZ, 1, sXZ);
 
         if (!b.arrived) {
           b.progress += dt / b.duration;
@@ -5286,6 +5490,7 @@ export class CyberRangeScene {
           b.probeMesh.position.copy(_tmpVecC);
           b.probeMesh.scale.setScalar(1.0 + Math.sin(eased * Math.PI) * 0.5);
           b.beamMat.uniforms.uProgress.value = eased;
+          if (b.haloMat) b.haloMat.uniforms.uProgress.value = eased;
 
           const arr = b.trailPositions;
           for (let k = 7; k > 0; k--) {
@@ -5303,6 +5508,7 @@ export class CyberRangeScene {
             b.probeMesh.visible = false;
             b.trailLine.visible = false;
             b.beamMat.uniforms.uOpacity.value = isV03OrV04 ? 0.85 : 0.55;
+            if (b.haloMat) b.haloMat.uniforms.uOpacity.value = 0.88;
             b.onArriveCallback?.();
           }
         } else if (!b.retiring) {
@@ -5311,42 +5517,105 @@ export class CyberRangeScene {
 
         if (b.solvingCard) {
           b.solvingCard.visible = !isV03OrV04;
-        b.solvingCard.lookAt(this.camera.position);
-        b.solvingCard.scale.y = THREE.MathUtils.damp(b.solvingCard.scale.y, 1.0, 12, dt);
-      }
+          b.solvingCard.lookAt(this.camera.position);
+          b.solvingCard.scale.y = THREE.MathUtils.damp(b.solvingCard.scale.y, 1.0, 12, dt);
+        }
 
-      if (b.retiring) {
-        b.retireTimer -= dt;
-        b.beamMat.uniforms.uOpacity.value = Math.max(0, b.retireTimer);
-        if (b.retireTimer <= 0) {
-          this.disposeBeam(b);
-          this.activeBeams.splice(i, 1);
-          this.refreshAttackTelemetry();
+        if (b.retiring) {
+          b.retireTimer -= dt;
+          const fadeOp = Math.max(0, b.retireTimer);
+          b.beamMat.uniforms.uOpacity.value = fadeOp;
+          if (b.haloMat) b.haloMat.uniforms.uOpacity.value = fadeOp * 0.88;
+          if (b.retireTimer <= 0) {
+            this.disposeBeam(b);
+            this.activeBeams.splice(i, 1);
+            this.refreshAttackTelemetry();
+          }
         }
       }
+
+      this.updateFXPools(dt, elapsed);
+      this.updateCameraChoreography(dt, rawDt);
     }
 
-    this.updateFXPools(dt, elapsed);
-    this.updateCameraChoreography(dt, rawDt);
-  }
-
   private updateFXPools(dt: number, _elapsed: number) {
+    // 1) 3D 球形护盾 (3.0s)
     for (let i = this.shieldDomes.length - 1; i >= 0; i--) {
       const sd = this.shieldDomes[i];
       sd.elapsed += dt;
-      if (sd.elapsed < 0.14) {
-        const s = 0.3 + (sd.elapsed / 0.14) * 0.7;
+      sd.mesh.rotation.y += dt * 0.65;
+      if (sd.elapsed < 0.22) {
+        const s = 0.32 + (sd.elapsed / 0.22) * 0.68;
         sd.mesh.scale.setScalar(s);
-      } else if (sd.elapsed > 0.85) {
-        const fade = 1.0 - (sd.elapsed - 0.85) / (sd.duration - 0.85);
-        sd.mat.uniforms.uOpacity.value = Math.max(0, fade * 0.9);
-        sd.mesh.scale.setScalar(1.0 + (1.0 - fade) * 0.18);
+        sd.mat.uniforms.uOpacity.value = 0.92;
+        sd.wireMat.opacity = 0.38;
+      } else if (sd.elapsed > sd.duration - 0.6) {
+        const fade = Math.max(0, 1.0 - (sd.elapsed - (sd.duration - 0.6)) / 0.6);
+        sd.mat.uniforms.uOpacity.value = fade * 0.92;
+        sd.wireMat.opacity = fade * 0.38;
+        sd.mesh.scale.setScalar(1.0 + (1.0 - fade) * 0.12);
+      } else {
+        const breathe = 1.0 + Math.sin(sd.elapsed * 5.0) * 0.025;
+        sd.mesh.scale.setScalar(breathe);
       }
       if (sd.elapsed >= sd.duration) {
         this.fxGroup.remove(sd.mesh);
         sd.mesh.geometry.dispose();
         sd.mat.dispose();
+        sd.wireMesh.geometry.dispose();
+        sd.wireMat.dispose();
         this.shieldDomes.splice(i, 1);
+      }
+    }
+
+    // 2) 设备底部向上射出并旋转的夺旗成功(青绿)/一血(金黄)光效 (3.0s)
+    for (let i = this.risingVortexes.length - 1; i >= 0; i--) {
+      const rv = this.risingVortexes[i];
+      rv.elapsed += dt;
+      rv.group.rotation.y += dt * 3.8;
+      rv.innerCyl.rotation.y -= dt * 5.4;
+
+      const pAttr = rv.particles.geometry.attributes.position as THREE.BufferAttribute;
+      const pArr = pAttr.array as Float32Array;
+      const pCount = rv.particleSpeeds.length;
+      for (let k = 0; k < pCount; k++) {
+        pArr[k * 3 + 1] += rv.particleSpeeds[k] * dt;
+        if (pArr[k * 3 + 1] > 3.6) {
+          pArr[k * 3 + 1] = 0.08;
+        }
+      }
+      pAttr.needsUpdate = true;
+
+      let alphaMult = 1.0;
+      let yScale = 1.0;
+      if (rv.elapsed < 0.24) {
+        const u = rv.elapsed / 0.24;
+        yScale = 0.1 + 0.9 * (1.0 - Math.pow(1.0 - u, 3));
+        alphaMult = u;
+      } else if (rv.elapsed > rv.duration - 0.65) {
+        alphaMult = Math.max(0, 1.0 - (rv.elapsed - (rv.duration - 0.65)) / 0.65);
+      }
+      rv.group.scale.set(1, yScale, 1);
+      rv.outerMat.uniforms.uOpacity.value = 0.92 * alphaMult;
+      rv.innerMat.uniforms.uOpacity.value = 0.95 * alphaMult;
+      rv.baseRingMat.opacity = 0.9 * alphaMult;
+      rv.spiralMat.opacity = 0.85 * alphaMult;
+      (rv.particles.material as THREE.PointsMaterial).opacity = 0.9 * alphaMult;
+      rv.baseRing.scale.setScalar(1.0 + Math.sin(rv.elapsed * 8.0) * 0.08);
+
+      if (rv.elapsed >= rv.duration) {
+        this.fxGroup.remove(rv.group);
+        rv.outerCyl.geometry.dispose();
+        rv.outerMat.dispose();
+        rv.innerCyl.geometry.dispose();
+        rv.innerMat.dispose();
+        rv.baseRing.geometry.dispose();
+        rv.baseRingMat.dispose();
+        rv.spiralMeshes.forEach((m) => m.geometry.dispose());
+        rv.spiralMat.dispose();
+        rv.particles.geometry.dispose();
+        (rv.particles.material as THREE.Material).dispose();
+        this.risingVortexes.splice(i, 1);
       }
     }
 

@@ -61,6 +61,9 @@ export interface ChallengeNodeUserData {
   }[];
   wireframeMix: number;
   statusMat: THREE.MeshStandardMaterial; // Emissive trim material driven by state color
+  deviceAccentGlowMat: THREE.MeshStandardMaterial;
+  deviceDeepGlowMat: THREE.MeshStandardMaterial;
+  deviceScreenMat: THREE.MeshBasicMaterial;
   beacon: THREE.Mesh;
   scanRing: THREE.Mesh;
   firstBloodCrown: THREE.Group;
@@ -77,9 +80,11 @@ export interface ChallengeNodeUserData {
   colorLerpTimer: number;
   colorLerpDuration: number;
   failFlashTimer: number;
+  attemptEffectTimer: number;
   labelFlipTimer: number;
   solveBurstTimer: number;
   compressTimer: number;
+  onAttemptExpired?: () => void;
   stepDynamicTexture?: (dt: number, elapsed: number) => void;
   stepV02Dynamic?: (dt: number, elapsed: number) => void;
   setHover: (hover: boolean) => void;
@@ -87,6 +92,7 @@ export interface ChallengeNodeUserData {
   setLabelMode: (mode: LabelDisplayMode) => void;
   setVersion: (version: SandboxVersion) => void;
   setWireframeMix: (mix: number) => void;
+  startAttemptEffect: (teamName: string, durationSec?: number) => void;
   flashFail: (attempts: number) => void;
   transitionState: (
     nextState: Challenge['state'],
@@ -2749,6 +2755,10 @@ export function createChallengeNode(
     false
   );
 
+  const deviceAccentGlowMat = palette.v03.pureCyanGlowMat.clone();
+  const deviceDeepGlowMat = palette.v03.deepBlueGlowMat.clone();
+  const deviceScreenMat = palette.v03.consoleScreenMat.clone();
+
   const solidMeshes: {
     mesh: THREE.Mesh;
     origMat: THREE.Material;
@@ -2763,6 +2773,13 @@ export function createChallengeNode(
   v03DetailGroup.traverse((obj) => {
     if ((obj as THREE.Mesh).isMesh) {
       const m = obj as THREE.Mesh;
+      if (m.material === palette.v03.pureCyanGlowMat) {
+        m.material = deviceAccentGlowMat;
+      } else if (m.material === palette.v03.deepBlueGlowMat) {
+        m.material = deviceDeepGlowMat;
+      } else if (m.material === palette.v03.consoleScreenMat) {
+        m.material = deviceScreenMat;
+      }
       const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material;
       if (!mat?.transparent) {
         m.castShadow = true;
@@ -2915,6 +2932,9 @@ export function createChallengeNode(
     existingEdgeLines,
     wireframeMix: initVer === '0.3' ? 1 : 0,
     statusMat,
+    deviceAccentGlowMat,
+    deviceDeepGlowMat,
+    deviceScreenMat,
     beacon,
     scanRing,
     firstBloodCrown,
@@ -2931,6 +2951,7 @@ export function createChallengeNode(
     colorLerpTimer: 0,
     colorLerpDuration: 0.4,
     failFlashTimer: 0,
+    attemptEffectTimer: challenge.state === 'attacking' ? 10.0 : 0,
     labelFlipTimer: 0,
     solveBurstTimer: 0,
     compressTimer: 0,
@@ -3009,14 +3030,26 @@ export function createChallengeNode(
             item.mesh.material = item.origMat;
           }
         }
+        const solvedNow = userData.state === 'solved' || challenge.solveCount >= 1;
         for (let i = 0; i < existingEdgeLines.length; i++) {
           const el = existingEdgeLines[i];
-          (el.line.material as THREE.LineBasicMaterial).opacity = el.origOpacity * solidAlpha;
+          const lMat = el.line.material as THREE.LineBasicMaterial;
+          lMat.color.setHex(solvedNow ? 0x00ff88 : 0x00d4ff);
+          const baseOp = solvedNow ? Math.min(0.95, el.origOpacity * 1.65) : el.origOpacity;
+          lMat.opacity = baseOp * solidAlpha;
         }
+      }
+    },
+    startAttemptEffect(teamName: string, durationSec = 10.0) {
+      userData.attemptEffectTimer = durationSec;
+      challenge.activeAttacker = teamName;
+      if (userData.state !== 'solved' && challenge.solveCount === 0) {
+        userData.transitionState('attacking', { team: teamName });
       }
     },
     flashFail(attempts: number) {
       userData.failFlashTimer = 1.25;
+      userData.attemptEffectTimer = 0;
       userData.compressTimer = 0.25;
       label.userData.redraw('failed', {
         attempts,
@@ -3037,7 +3070,11 @@ export function createChallengeNode(
       if (nextState === 'attacking' && payload.team) {
         challenge.activeAttacker = payload.team;
       }
+      if (nextState === 'idle') {
+        userData.attemptEffectTimer = 0;
+      }
       if (nextState === 'solved') {
+        userData.attemptEffectTimer = 0;
         if (payload.team) challenge.solvedBy = payload.team;
         if (payload.firstBlood !== undefined) challenge.firstBlood = payload.firstBlood;
         userData.solveBurstTimer = 0.85;
@@ -3077,12 +3114,25 @@ export function createChallengeNode(
 const _v03CoolCyan = new THREE.Color(0x00d4ff);
 const _v03DeepBlue = new THREE.Color(0x0284c7);
 const _v03WarmRed = new THREE.Color(0xff2e1f);
+const _v03SolvedGreen = new THREE.Color(0x00ff88);
 
 /**
  * 每帧更新单台设备节点的状态动画、材质发光与铭牌显隐模式（适配 0.1 赛博线框版 与 0.2 中央突击版）
  */
 export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: number) {
   const ud = node.userData as ChallengeNodeUserData;
+
+  // 尝试解题动效 10s 自动倒计时（除非新队伍触发尝试解题重置定时器）
+  if (ud.attemptEffectTimer > 0) {
+    ud.attemptEffectTimer = Math.max(0, ud.attemptEffectTimer - dt);
+    if (ud.attemptEffectTimer === 0) {
+      ud.challenge.activeAttempts = 0;
+      if (ud.state === 'attacking') {
+        ud.transitionState('idle');
+      }
+      ud.onAttemptExpired?.();
+    }
+  }
 
   // 悬停缩放阻尼 + 受击回弹
   let scaleMod = ud.targetScale;
@@ -3131,11 +3181,43 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     }
   }
 
-  // 严格色彩纪律：全场设备指示灯采用冷色青/蓝 (Cool Cyan/Blue)，仅在被红色攻击激光锁定或阻断时呈现鲜明红光对比
-  if (ud.state === 'attacking' || ud.failFlashTimer > 0) {
-    displayColor = _v03WarmRed;
-  } else if (ud.state === 'solved') {
-    displayColor = _v03CoolCyan;
+  const isSolved = ud.state === 'solved' || ud.challenge.solveCount >= 1;
+  const hasAttemptActive = ud.attemptEffectTimer > 0 || ud.state === 'attacking';
+  const isUnderAttack = hasAttemptActive || ud.failFlashTimer > 0;
+  const pulse = Math.sin(elapsed * 4.5 + ud.pulsePhase) * 0.5 + 0.5;
+
+  // 区分未解出(蓝色微光) 与 已解出(更强烈明显的绿色发光)
+  if (isSolved) {
+    ud.deviceAccentGlowMat.color.setHex(0x00ff88);
+    ud.deviceAccentGlowMat.emissive.setHex(0x00ff77);
+    ud.deviceAccentGlowMat.emissiveIntensity = 1.9 + pulse * 0.25;
+    ud.deviceDeepGlowMat.color.setHex(0x10b981);
+    ud.deviceDeepGlowMat.emissive.setHex(0x00ff66);
+    ud.deviceDeepGlowMat.emissiveIntensity = 1.6 + pulse * 0.2;
+    ud.deviceScreenMat.color.setHex(0x34ff9a);
+  } else {
+    ud.deviceAccentGlowMat.color.setHex(0x00d4ff);
+    ud.deviceAccentGlowMat.emissive.setHex(0x00c8ff);
+    ud.deviceAccentGlowMat.emissiveIntensity = 0.72;
+    ud.deviceDeepGlowMat.color.setHex(0x0ea5e9);
+    ud.deviceDeepGlowMat.emissive.setHex(0x0284c7);
+    ud.deviceDeepGlowMat.emissiveIntensity = 0.58;
+    ud.deviceScreenMat.color.setHex(0x4ca6c8);
+  }
+
+  if (ud.wireframeMix < 0.005) {
+    for (let i = 0; i < ud.existingEdgeLines.length; i++) {
+      const el = ud.existingEdgeLines[i];
+      const lMat = el.line.material as THREE.LineBasicMaterial;
+      lMat.color.setHex(isSolved ? 0x00ff88 : 0x00d4ff);
+      lMat.opacity = isSolved ? Math.min(0.95, el.origOpacity * 1.65) : el.origOpacity;
+    }
+  }
+
+  if (isSolved && !hasAttemptActive && ud.failFlashTimer <= 0) {
+    displayColor = _v03SolvedGreen;
+  } else if (hasAttemptActive || ud.failFlashTimer > 0) {
+    displayColor = isSolved ? _v03SolvedGreen : _v03WarmRed;
   } else {
     displayColor = _v03DeepBlue;
   }
@@ -3154,27 +3236,24 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
   beaconMat.color.copy(displayColor);
   scanMat.color.setHex(0xff3300);
 
-  const pulse = Math.sin(elapsed * 4.5 + ud.pulsePhase) * 0.5 + 0.5;
-  const isUnderAttack = ud.state === 'attacking' || ud.failFlashTimer > 0;
-
-  // 严格隐藏平时底座光环，仅当设备被选中或正处于受击/拦截状态时显示红圈/选中圈
+  // 严格隐藏平时底座光环，仅当设备被选中或正处于 10s 尝试解题/受击状态时显示
   if (isUnderAttack) {
     ud.baseRing.visible = true;
     ud.baseRing.rotation.z += dt * 1.8;
     ringMat.color.setHex(ud.version === '0.3' ? 0xff3300 : 0xff2e1f);
     ringMat.opacity = 0.62 + pulse * 0.22;
-    ud.statusMat.emissiveIntensity = 0.55 + pulse * 0.24;
+    ud.statusMat.emissiveIntensity = isSolved ? 1.85 + pulse * 0.25 : 0.58 + pulse * 0.26;
     beaconMat.opacity = 0;
-    ud.scanRing.visible = ud.state === 'attacking';
-    scanMat.opacity = ud.state === 'attacking' ? 0.48 : 0;
+    ud.scanRing.visible = hasAttemptActive;
+    scanMat.opacity = hasAttemptActive ? 0.54 : 0;
     const scanPhase = (elapsed % 1.8) / 1.8;
     ud.scanRing.position.y = Math.sin(scanPhase * Math.PI) * 1.85 + 0.1;
   } else if (ud.selected) {
     ud.baseRing.visible = true;
     ud.baseRing.rotation.z += dt * 0.85;
-    ringMat.color.copy(_v03CoolCyan);
+    ringMat.color.copy(isSolved ? _v03SolvedGreen : _v03CoolCyan);
     ringMat.opacity = 0.58;
-    ud.statusMat.emissiveIntensity = ud.state === 'solved' ? 0.42 : 0.35;
+    ud.statusMat.emissiveIntensity = isSolved ? 1.85 : 0.35;
     beaconMat.opacity = 0;
     ud.scanRing.visible = false;
     scanMat.opacity = 0;
@@ -3184,7 +3263,7 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     ud.scanRing.visible = false;
     scanMat.opacity = 0;
     beaconMat.opacity = 0;
-    ud.statusMat.emissiveIntensity = ud.state === 'solved' ? 0.42 : ud.hovered ? 0.48 : 0.28;
+    ud.statusMat.emissiveIntensity = isSolved ? 1.85 + pulse * 0.25 : ud.hovered ? 0.48 : 0.28;
   }
 
   if (ud.selected) {

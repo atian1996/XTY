@@ -184,7 +184,7 @@ export default function App() {
   const [activeZoneFocus, setActiveZoneFocus] = useState<
     ZoneId | 'attack' | 'all'
   >('all');
-  const [dockCollapsed, setDockCollapsed] = useState(false);
+  const [dockCollapsed, setDockCollapsed] = useState(true);
   const [autoSimRunning, setAutoSimRunning] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [autoRotateEnabled, setAutoRotateEnabled] = useState(false);

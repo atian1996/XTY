@@ -146,10 +146,10 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
 
   return (
     <aside className="pointer-events-auto w-[280px] xl:w-[308px] 2xl:w-[328px] shrink-0 h-full flex flex-col gap-2.5 min-h-0">
-      {/* 左侧面板 1：全局态势概览 (Global Overview) ~22% */}
+      {/* 左侧面板 1：全局态势概览 (Global Overview) */}
       <CyberPanel
         wireframeMode={wireframeMode}
-        className="flex-[22] min-h-[150px]"
+        className="flex-[38] min-h-[146px]"
         innerClassName="px-3 py-2.5 justify-between"
       >
         <div className="flex items-center justify-between">
@@ -327,10 +327,10 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
         </div>
       </CyberPanel>
 
-      {/* 左侧面板 2：各方向题目解题进度 (Direction Progress) ~34% */}
+      {/* 左侧面板 2：各方向题目解题进度 (Direction Progress) */}
       <CyberPanel
         wireframeMode={wireframeMode}
-        className="flex-[34] min-h-[212px]"
+        className="flex-[62] min-h-[208px]"
         innerClassName="px-3 py-2.5"
       >
         <div className="flex items-center justify-between gap-2 mb-1.5 shrink-0 flex-nowrap">
@@ -466,11 +466,11 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
         </div>
       </CyberPanel>
 
-      {/* 左侧面板 3：实时一血榜 (First Blood) Cover Flow 3D 卡片轮播 ~44% */}
+      {/* 左侧面板 3：实时一血榜 (First Blood) Cover Flow 3D 卡片轮播（与右侧实时动态保持等高） */}
       <CyberPanel
         wireframeMode={wireframeMode}
-        className="flex-[44] min-h-[205px]"
-        innerClassName="px-3 py-2.5 justify-between"
+        className="h-[35%] min-h-[214px] max-h-[330px] shrink-0"
+        innerClassName="px-3 py-2 justify-between"
       >
         <div className="flex items-center justify-between shrink-0">
           <div className="flex items-center gap-1.5">
@@ -562,7 +562,7 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
               <div
                 key={fb.id}
                 onClick={() => setActiveFbIndex(idx)}
-                className="absolute left-1/2 top-1/2 w-[206px] xl:w-[220px] 2xl:w-[228px] h-[160px] 2xl:h-[176px] transition-[transform,opacity,filter] duration-500 ease-out cursor-pointer"
+                className="absolute left-1/2 top-1/2 w-[206px] xl:w-[220px] 2xl:w-[228px] h-[142px] xl:h-[152px] 2xl:h-[168px] transition-[transform,opacity,filter] duration-500 ease-out cursor-pointer"
                 style={{
                   transform: `translate(calc(-50% + ${translateX}px), -50%) scale(${scale})`,
                   opacity,

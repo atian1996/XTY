@@ -413,15 +413,20 @@ export const attackBeamHaloFragmentShader = /* glsl */ `
 `;
 
 /**
- * 6) 六边形蜂窝能量护盾 Shader
+ * 6) 3D 球形六边形蜂窝能量护盾 Shader (Spherical Fresnel + Hex Lattice)
  */
 export const hexShieldVertexShader = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vPos;
+  varying vec3 vNormalView;
+  varying vec3 vViewDir;
   void main() {
     vUv = uv;
     vPos = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vNormalView = normalize(normalMatrix * normal);
+    vViewDir = normalize(-mvPos.xyz);
+    gl_Position = projectionMatrix * mvPos;
   }
 `;
 
@@ -431,6 +436,8 @@ export const hexShieldFragmentShader = /* glsl */ `
   uniform vec3 uColor;
   varying vec2 vUv;
   varying vec3 vPos;
+  varying vec3 vNormalView;
+  varying vec3 vViewDir;
 
   float hexGrid(vec2 p) {
     p = abs(p);
@@ -438,19 +445,57 @@ export const hexShieldFragmentShader = /* glsl */ `
   }
 
   void main() {
-    vec2 centered = (vUv - 0.5) * 2.0;
-    float r = length(centered);
+    float ndv = clamp(abs(dot(normalize(vNormalView), normalize(vViewDir))), 0.0, 1.0);
+    float fresnel = pow(1.0 - ndv, 1.85);
 
-    vec2 g = fract(centered * 5.0) - 0.5;
+    vec2 g = fract(vec2(vUv.x * 16.0, vUv.y * 8.0)) - 0.5;
     float h = hexGrid(g);
-    float cellEdge = smoothstep(0.40, 0.47, h);
+    float cellEdge = smoothstep(0.39, 0.47, h);
 
-    float wave = sin(r * 16.0 - uTime * 14.0) * 0.5 + 0.5;
-    float rim = smoothstep(0.45, 0.98, r);
+    float wave = pow(sin(vPos.y * 5.2 - uTime * 7.5) * 0.5 + 0.5, 3.0);
+    float latRing = pow(sin(vPos.y * 12.0 + uTime * 3.0) * 0.5 + 0.5, 8.0) * 0.45;
 
-    vec3 col = uColor * (0.5 + cellEdge * 0.95 + wave * 0.45 + rim * 0.85);
-    float alpha = clamp((0.22 + cellEdge * 0.48 + rim * 0.38 + wave * 0.18) * uOpacity, 0.0, 0.92);
+    vec3 rimTint = mix(uColor, vec3(0.75, 0.96, 1.0), fresnel * 0.55);
+    vec3 col = rimTint * (0.45 + fresnel * 1.45 + cellEdge * 0.65 + wave * 0.55 + latRing);
+    float alpha = clamp((0.06 + fresnel * 0.72 + cellEdge * 0.24 + wave * 0.16 + latRing * 0.14) * uOpacity, 0.0, 0.92);
     gl_FragColor = vec4(col, alpha);
+  }
+`;
+
+/**
+ * 6b) 夺旗成功/一血事件：从设备底部向上射出并旋转的能量光柱 Shader
+ */
+export const risingVortexVertexShader = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+export const risingVortexFragmentShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uOpacity;
+  uniform float uIntensity;
+  uniform vec3 uColorPrimary;
+  uniform vec3 uColorSecondary;
+  varying vec2 vUv;
+
+  void main() {
+    float angle = vUv.x * 6.2831853;
+    float helix1 = pow(0.5 + 0.5 * sin(angle * 4.0 - vUv.y * 10.0 + uTime * 8.5), 2.8);
+    float helix2 = pow(0.5 + 0.5 * sin(angle * 7.0 - vUv.y * 15.0 + uTime * 11.5), 4.0);
+    float upwardFlow = fract(vUv.y * 2.5 - uTime * 2.4);
+    float streak = pow(1.0 - abs(upwardFlow * 2.0 - 1.0), 3.0);
+
+    float vFade = smoothstep(0.0, 0.10, vUv.y) * (1.0 - smoothstep(0.38, 1.0, vUv.y));
+    float baseHot = exp(-vUv.y * 4.5);
+
+    vec3 col = mix(uColorPrimary, uColorSecondary, clamp(helix2 * 0.65 + baseHot * 0.45, 0.0, 1.0));
+    float energy = (0.75 + helix1 * 1.15 + helix2 * 0.95 + streak * 0.75 + baseHot * 0.95) * uIntensity;
+    float alpha = clamp((0.12 + helix1 * 0.48 + helix2 * 0.36 + streak * 0.24 + baseHot * 0.42) * vFade * uOpacity, 0.0, 0.95);
+
+    gl_FragColor = vec4(col * energy, alpha);
   }
 `;
 

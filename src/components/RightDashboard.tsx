@@ -88,10 +88,10 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
 
   return (
     <aside className="pointer-events-auto w-[280px] xl:w-[308px] 2xl:w-[328px] shrink-0 h-full flex flex-col gap-2.5 min-h-0">
-      {/* 右侧面板 1：TOP10 排行榜 (固定显示前 10 名，不滚动) */}
+      {/* 右侧面板 1：TOP10 排行榜 (固定显示前 10 名，自适应填充上方剩余高度) */}
       <CyberPanel
         wireframeMode={wireframeMode}
-        className="shrink-0"
+        className="flex-1 min-h-0"
         innerClassName="px-3 py-2.5"
       >
         {/* 标题 */}
@@ -128,8 +128,12 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
           <span className="text-right">得分</span>
         </div>
 
-        {/* 列表容器：始终完整固定展示前 10 名，无滚动 */}
-        <div className={wireframeMode ? 'mt-0.5' : 'mt-1 space-y-[3px]'}>
+        {/* 列表容器：始终完整固定展示前 10 名，自适应等距分布无滚动 */}
+        <div
+          className={`flex-1 min-h-0 flex flex-col justify-between ${
+            wireframeMode ? 'mt-0.5' : 'mt-1'
+          }`}
+        >
           {top10Teams.length === 0 ? (
             <div className="py-8 flex items-center justify-center text-xs text-[#9ca3af]">
               未找到匹配队伍
@@ -163,7 +167,7 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
                   key={team.id}
                   type="button"
                   onClick={() => onSelectTeam?.(team.name)}
-                  className={`w-full grid grid-cols-[32px_1fr_48px_58px] items-center px-1.5 py-[5px] text-left transition-all duration-300 cursor-pointer ${
+                  className={`w-full flex-1 max-h-[46px] grid grid-cols-[32px_1fr_48px_58px] items-center px-1.5 py-[3px] text-left transition-all duration-300 cursor-pointer ${
                     wireframeMode
                       ? `bg-transparent rounded-none ${
                           idx < top10Teams.length - 1
@@ -275,11 +279,11 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
         </div>
       </CyberPanel>
 
-      {/* 右侧面板 2：解题动态流 (Real-time Event Log) 填充剩余高度 */}
+      {/* 右侧面板 2：解题动态流 (Real-time Event Log) 与左侧实时一血榜始终保持等高 */}
       <CyberPanel
         wireframeMode={wireframeMode}
-        className="flex-1 min-h-0"
-        innerClassName="px-3 py-2.5"
+        className="h-[35%] min-h-[214px] max-h-[330px] shrink-0"
+        innerClassName="px-3 py-2"
       >
         <div className="flex items-center justify-between mb-2 shrink-0">
           <div className="flex items-center gap-1.5">
