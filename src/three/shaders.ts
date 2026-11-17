@@ -544,10 +544,10 @@ export const solvedUpwardBeamFragmentShader = /* glsl */ `
     vec3 mintRootCol = vec3(0.28, 1.00, 0.64);
     vec3 col = mix(emeraldCol, mintRootCol, clamp(baseBoost * 0.72 + uCoreWeight * 0.25, 0.0, 1.0));
 
-    float energy = (0.78 + ray1 * 0.42 + stream * 0.35 + baseBoost * 0.85) * pulse * mix(0.82, 1.12, uCoreWeight);
-    float alpha = bottomEdge * upwardFade * cylSoft * (0.44 + ray1 * 0.22 + stream * 0.16 + baseBoost * 0.34) * uOpacity;
+    float energy = (0.58 + ray1 * 0.30 + stream * 0.25 + baseBoost * 0.55) * pulse * mix(0.75, 0.96, uCoreWeight);
+    float alpha = bottomEdge * upwardFade * cylSoft * (0.36 + ray1 * 0.18 + stream * 0.14 + baseBoost * 0.24) * uOpacity;
 
-    gl_FragColor = vec4(col * energy, clamp(alpha, 0.0, 0.90));
+    gl_FragColor = vec4(col * energy, clamp(alpha, 0.0, 0.65));
   }
 `;
 
@@ -575,10 +575,10 @@ export const solvedFloorGlowFragmentShader = /* glsl */ `
     float softPool = exp(-r * r * 3.4) * 0.62;
     float pulse = 0.90 + 0.10 * sin(uTime * 3.2);
 
-    vec3 col = mix(vec3(0.0, 0.92, 0.40), vec3(0.28, 1.0, 0.62), ringGlow * 0.5);
+    vec3 col = mix(vec3(0.0, 0.85, 0.36), vec3(0.18, 0.95, 0.52), ringGlow * 0.45);
     float alpha = (ringGlow + softPool) * (1.0 - smoothstep(0.75, 1.0, r)) * pulse * uOpacity;
 
-    gl_FragColor = vec4(col * 1.35, clamp(alpha, 0.0, 0.88));
+    gl_FragColor = vec4(col * 0.95, clamp(alpha, 0.0, 0.62));
   }
 `;
 
