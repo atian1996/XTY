@@ -500,6 +500,89 @@ export const risingVortexFragmentShader = /* glsl */ `
 `;
 
 /**
+ * 6c) 已解出设备状态：底部向上射出、从下往上逐渐透明的绿色光束 Shader
+ */
+export const solvedUpwardBeamVertexShader = /* glsl */ `
+  varying vec2 vUv;
+  varying vec3 vNormalView;
+  varying vec3 vViewDir;
+
+  void main() {
+    vUv = uv;
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vNormalView = normalize(normalMatrix * normal);
+    vViewDir = normalize(-mvPos.xyz);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+
+export const solvedUpwardBeamFragmentShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uOpacity;
+  uniform float uCoreWeight;
+  varying vec2 vUv;
+  varying vec3 vNormalView;
+  varying vec3 vViewDir;
+
+  void main() {
+    // 软化圆柱左右边缘轮廓，避免出现生硬直线边界
+    float ndv = clamp(abs(dot(normalize(vNormalView), normalize(vViewDir))), 0.0, 1.0);
+    float cylSoft = smoothstep(0.0, 0.40, ndv) * (0.35 + 0.65 * ndv);
+
+    // 底部极短平滑切入避免贴地锯齿，从下往上平滑渐隐直至顶部完全透明
+    float bottomEdge = smoothstep(0.0, 0.04, vUv.y);
+    float upwardFade = pow(1.0 - smoothstep(0.04, 1.0, vUv.y), mix(1.95, 2.35, uCoreWeight));
+    float baseBoost = exp(-vUv.y * 5.2) * 0.75;
+
+    // 向上流动的细腻光线束纹与微弱光柱纵纹
+    float angle = vUv.x * 6.2831853;
+    float ray1 = pow(0.5 + 0.5 * sin(angle * 7.0 + vUv.y * 4.0 - uTime * 2.2), 2.4);
+    float stream = pow(1.0 - abs(fract(vUv.y * 1.45 - uTime * 0.85) * 2.0 - 1.0), 2.8);
+    float pulse = 0.88 + 0.12 * sin(uTime * 3.0);
+
+    vec3 emeraldCol = vec3(0.02, 0.96, 0.42);
+    vec3 mintRootCol = vec3(0.28, 1.00, 0.64);
+    vec3 col = mix(emeraldCol, mintRootCol, clamp(baseBoost * 0.72 + uCoreWeight * 0.25, 0.0, 1.0));
+
+    float energy = (0.78 + ray1 * 0.42 + stream * 0.35 + baseBoost * 0.85) * pulse * mix(0.82, 1.12, uCoreWeight);
+    float alpha = bottomEdge * upwardFade * cylSoft * (0.44 + ray1 * 0.22 + stream * 0.16 + baseBoost * 0.34) * uOpacity;
+
+    gl_FragColor = vec4(col * energy, clamp(alpha, 0.0, 0.90));
+  }
+`;
+
+/**
+ * 6d) 已解出设备底座地面绿色漫反射光晕 Shader
+ */
+export const solvedFloorGlowVertexShader = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+export const solvedFloorGlowFragmentShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uOpacity;
+  varying vec2 vUv;
+
+  void main() {
+    float r = length(vUv - 0.5) * 2.0;
+    if (r > 1.0) discard;
+
+    float ringGlow = exp(-pow((r - 0.66) * 4.2, 2.0)) * 0.95;
+    float softPool = exp(-r * r * 3.4) * 0.62;
+    float pulse = 0.90 + 0.10 * sin(uTime * 3.2);
+
+    vec3 col = mix(vec3(0.0, 0.92, 0.40), vec3(0.28, 1.0, 0.62), ringGlow * 0.5);
+    float alpha = (ringGlow + softPool) * (1.0 - smoothstep(0.75, 1.0, r)) * pulse * uOpacity;
+
+    gl_FragColor = vec4(col * 1.35, clamp(alpha, 0.0, 0.88));
+  }
+`;
+
+/**
  * 7) 后处理：8K 全景清晰对焦 + 摄影级柔和暗角
  */
 export const VignetteChromaticShader = {

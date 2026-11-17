@@ -22,6 +22,12 @@ import {
   createV04SilverStorageBayTexture,
   createV04WhiteRackFrontTexture,
 } from './textures';
+import {
+  solvedFloorGlowFragmentShader,
+  solvedFloorGlowVertexShader,
+  solvedUpwardBeamFragmentShader,
+  solvedUpwardBeamVertexShader,
+} from './shaders';
 
 export type LabelDisplayMode = 'compact' | 'full' | 'hover';
 
@@ -64,6 +70,12 @@ export interface ChallengeNodeUserData {
   deviceAccentGlowMat: THREE.MeshStandardMaterial;
   deviceDeepGlowMat: THREE.MeshStandardMaterial;
   deviceScreenMat: THREE.MeshBasicMaterial;
+  solvedBeamGroup: THREE.Group;
+  solvedBeamOuterMat: THREE.ShaderMaterial;
+  solvedBeamInnerMat: THREE.ShaderMaterial;
+  solvedFloorGlowMat: THREE.ShaderMaterial;
+  solvedBaseRingMat: THREE.MeshBasicMaterial;
+  solvedGlowMix: number;
   beacon: THREE.Mesh;
   scanRing: THREE.Mesh;
   firstBloodCrown: THREE.Group;
@@ -135,6 +147,10 @@ export interface SharedNodePalette {
   crownHexMat: THREE.MeshBasicMaterial;
   outerGoldRingGeo: THREE.RingGeometry;
   outerGoldRingMat: THREE.MeshBasicMaterial;
+  solvedBeamOuterGeo: THREE.CylinderGeometry;
+  solvedBeamInnerGeo: THREE.CylinderGeometry;
+  solvedFloorGlowGeo: THREE.PlaneGeometry;
+  solvedBaseRingGeo: THREE.TorusGeometry;
   // v0.1 shared
   v01: {
     chassisDarkMat: THREE.MeshStandardMaterial;
@@ -315,6 +331,10 @@ export function createSharedNodePalette(maxAnisotropy = 4): SharedNodePalette {
       opacity: 0.72,
       depthWrite: false,
     }),
+    solvedBeamOuterGeo: new THREE.CylinderGeometry(0.76, 0.94, 2.45, 36, 1, true),
+    solvedBeamInnerGeo: new THREE.CylinderGeometry(0.36, 0.62, 2.15, 28, 1, true),
+    solvedFloorGlowGeo: new THREE.PlaneGeometry(2.6, 2.6),
+    solvedBaseRingGeo: new THREE.TorusGeometry(0.92, 0.028, 10, 48),
     v01: {
       chassisDarkMat: new THREE.MeshStandardMaterial({
         color: 0x42556e,
@@ -2886,6 +2906,78 @@ export function createChallengeNode(
   firstBloodCrown.visible = challenge.state === 'solved' && challenge.firstBlood;
   group.add(firstBloodCrown);
 
+  // ⑤b 已解出设备专属：底部向上射出的渐隐绿色光束 + 底座绿色发光环与地面漫反射光晕
+  const initSolvedMix =
+    challenge.state === 'solved' || challenge.solveCount >= 1 ? 1.0 : 0.0;
+  const solvedBeamGroup = new THREE.Group();
+
+  const solvedFloorGlowMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: initSolvedMix * 0.92 },
+    },
+    vertexShader: solvedFloorGlowVertexShader,
+    fragmentShader: solvedFloorGlowFragmentShader,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const solvedFloorGlow = new THREE.Mesh(palette.solvedFloorGlowGeo, solvedFloorGlowMat);
+  solvedFloorGlow.rotation.x = -Math.PI / 2;
+  solvedFloorGlow.position.y = 0.026;
+  solvedFloorGlow.renderOrder = 1;
+
+  const solvedBaseRingMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0.22, 2.45, 0.88),
+    transparent: true,
+    opacity: initSolvedMix * 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const solvedBaseRing = new THREE.Mesh(palette.solvedBaseRingGeo, solvedBaseRingMat);
+  solvedBaseRing.rotation.x = Math.PI / 2;
+  solvedBaseRing.position.y = 0.045;
+  solvedBaseRing.renderOrder = 2;
+
+  const solvedBeamOuterMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: initSolvedMix * 0.88 },
+      uCoreWeight: { value: 0.0 },
+    },
+    vertexShader: solvedUpwardBeamVertexShader,
+    fragmentShader: solvedUpwardBeamFragmentShader,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const solvedBeamOuter = new THREE.Mesh(palette.solvedBeamOuterGeo, solvedBeamOuterMat);
+  solvedBeamOuter.position.y = 1.255;
+  solvedBeamOuter.renderOrder = 3;
+
+  const solvedBeamInnerMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: initSolvedMix * 0.72 },
+      uCoreWeight: { value: 1.0 },
+    },
+    vertexShader: solvedUpwardBeamVertexShader,
+    fragmentShader: solvedUpwardBeamFragmentShader,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const solvedBeamInner = new THREE.Mesh(palette.solvedBeamInnerGeo, solvedBeamInnerMat);
+  solvedBeamInner.position.y = 1.105;
+  solvedBeamInner.renderOrder = 3;
+
+  solvedBeamGroup.add(solvedFloorGlow, solvedBaseRing, solvedBeamOuter, solvedBeamInner);
+  solvedBeamGroup.visible = initSolvedMix > 0.005;
+  group.add(solvedBeamGroup);
+
   // ⑥ 题目全息铭牌（v0.3 / v0.4 下呈现极简半透明暗底青框中文小标签）+ 前三攻破队伍榜
   const label = createChallengeHoloLabel(challenge, zoneColorHex, palette.maxAnisotropy);
   label.position.y = 2.24;
@@ -2935,6 +3027,12 @@ export function createChallengeNode(
     deviceAccentGlowMat,
     deviceDeepGlowMat,
     deviceScreenMat,
+    solvedBeamGroup,
+    solvedBeamOuterMat,
+    solvedBeamInnerMat,
+    solvedFloorGlowMat,
+    solvedBaseRingMat,
+    solvedGlowMix: initSolvedMix,
     beacon,
     scanRing,
     firstBloodCrown,
@@ -3034,11 +3132,21 @@ export function createChallengeNode(
         for (let i = 0; i < existingEdgeLines.length; i++) {
           const el = existingEdgeLines[i];
           const lMat = el.line.material as THREE.LineBasicMaterial;
-          lMat.color.setHex(solvedNow ? 0x00ff88 : 0x00d4ff);
-          const baseOp = solvedNow ? Math.min(0.95, el.origOpacity * 1.65) : el.origOpacity;
+          if (solvedNow) {
+            lMat.color.setRGB(0.28, 2.05, 0.78);
+          } else {
+            lMat.color.setHex(0x00d4ff);
+          }
+          const baseOp = solvedNow ? 1.0 : el.origOpacity;
           lMat.opacity = baseOp * solidAlpha;
         }
       }
+      const beamVisAlpha = userData.solvedGlowMix * solidAlpha;
+      solvedBeamGroup.visible = beamVisAlpha > 0.005;
+      solvedBeamOuterMat.uniforms.uOpacity.value = 0.88 * beamVisAlpha;
+      solvedBeamInnerMat.uniforms.uOpacity.value = 0.72 * beamVisAlpha;
+      solvedFloorGlowMat.uniforms.uOpacity.value = 0.92 * beamVisAlpha;
+      solvedBaseRingMat.opacity = 0.9 * beamVisAlpha;
     },
     startAttemptEffect(teamName: string, durationSec = 10.0) {
       userData.attemptEffectTimer = durationSec;
@@ -3186,15 +3294,31 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
   const isUnderAttack = hasAttemptActive || ud.failFlashTimer > 0;
   const pulse = Math.sin(elapsed * 4.5 + ud.pulsePhase) * 0.5 + 0.5;
 
-  // 区分未解出(蓝色微光) 与 已解出(更强烈明显的绿色发光)
+  // 平滑更新已解出光效混合度 & 底部向上渐隐绿色光束
+  ud.solvedGlowMix = THREE.MathUtils.damp(ud.solvedGlowMix, isSolved ? 1.0 : 0.0, 8, dt);
+  const solidAlpha = Math.max(0, 1.0 - ud.wireframeMix);
+  const beamVisAlpha = ud.solvedGlowMix * solidAlpha;
+  ud.solvedBeamGroup.visible = beamVisAlpha > 0.005;
+  if (ud.solvedBeamGroup.visible) {
+    ud.solvedBeamGroup.scale.set(currScale, 1, currScale);
+    ud.solvedBeamOuterMat.uniforms.uTime.value = elapsed;
+    ud.solvedBeamOuterMat.uniforms.uOpacity.value = 0.88 * beamVisAlpha;
+    ud.solvedBeamInnerMat.uniforms.uTime.value = elapsed;
+    ud.solvedBeamInnerMat.uniforms.uOpacity.value = 0.72 * beamVisAlpha;
+    ud.solvedFloorGlowMat.uniforms.uTime.value = elapsed;
+    ud.solvedFloorGlowMat.uniforms.uOpacity.value = 0.92 * beamVisAlpha;
+    ud.solvedBaseRingMat.opacity = (0.85 + pulse * 0.15) * beamVisAlpha;
+  }
+
+  // 区分未解出(蓝色微光) 与 已解出(更强烈明显的HDR翡翠绿发光)
   if (isSolved) {
-    ud.deviceAccentGlowMat.color.setHex(0x00ff88);
+    ud.deviceAccentGlowMat.color.setHex(0x4dff9e);
     ud.deviceAccentGlowMat.emissive.setHex(0x00ff77);
-    ud.deviceAccentGlowMat.emissiveIntensity = 1.9 + pulse * 0.25;
-    ud.deviceDeepGlowMat.color.setHex(0x10b981);
-    ud.deviceDeepGlowMat.emissive.setHex(0x00ff66);
-    ud.deviceDeepGlowMat.emissiveIntensity = 1.6 + pulse * 0.2;
-    ud.deviceScreenMat.color.setHex(0x34ff9a);
+    ud.deviceAccentGlowMat.emissiveIntensity = 3.1 + pulse * 0.55;
+    ud.deviceDeepGlowMat.color.setHex(0x22ff88);
+    ud.deviceDeepGlowMat.emissive.setHex(0x00ee66);
+    ud.deviceDeepGlowMat.emissiveIntensity = 2.6 + pulse * 0.45;
+    ud.deviceScreenMat.color.setHex(0x66ffaa);
   } else {
     ud.deviceAccentGlowMat.color.setHex(0x00d4ff);
     ud.deviceAccentGlowMat.emissive.setHex(0x00c8ff);
@@ -3209,8 +3333,13 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     for (let i = 0; i < ud.existingEdgeLines.length; i++) {
       const el = ud.existingEdgeLines[i];
       const lMat = el.line.material as THREE.LineBasicMaterial;
-      lMat.color.setHex(isSolved ? 0x00ff88 : 0x00d4ff);
-      lMat.opacity = isSolved ? Math.min(0.95, el.origOpacity * 1.65) : el.origOpacity;
+      if (isSolved) {
+        lMat.color.setRGB(0.28, 2.05, 0.78);
+        lMat.opacity = 1.0;
+      } else {
+        lMat.color.setHex(0x00d4ff);
+        lMat.opacity = el.origOpacity;
+      }
     }
   }
 
@@ -3242,7 +3371,7 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     ud.baseRing.rotation.z += dt * 1.8;
     ringMat.color.setHex(ud.version === '0.3' ? 0xff3300 : 0xff2e1f);
     ringMat.opacity = 0.62 + pulse * 0.22;
-    ud.statusMat.emissiveIntensity = isSolved ? 1.85 + pulse * 0.25 : 0.58 + pulse * 0.26;
+    ud.statusMat.emissiveIntensity = isSolved ? 3.1 + pulse * 0.55 : 0.58 + pulse * 0.26;
     beaconMat.opacity = 0;
     ud.scanRing.visible = hasAttemptActive;
     scanMat.opacity = hasAttemptActive ? 0.54 : 0;
@@ -3253,7 +3382,7 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     ud.baseRing.rotation.z += dt * 0.85;
     ringMat.color.copy(isSolved ? _v03SolvedGreen : _v03CoolCyan);
     ringMat.opacity = 0.58;
-    ud.statusMat.emissiveIntensity = isSolved ? 1.85 : 0.35;
+    ud.statusMat.emissiveIntensity = isSolved ? 3.1 : 0.35;
     beaconMat.opacity = 0;
     ud.scanRing.visible = false;
     scanMat.opacity = 0;
@@ -3263,7 +3392,7 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     ud.scanRing.visible = false;
     scanMat.opacity = 0;
     beaconMat.opacity = 0;
-    ud.statusMat.emissiveIntensity = isSolved ? 1.85 + pulse * 0.25 : ud.hovered ? 0.48 : 0.28;
+    ud.statusMat.emissiveIntensity = isSolved ? 3.1 + pulse * 0.55 : ud.hovered ? 0.48 : 0.28;
   }
 
   if (ud.selected) {
