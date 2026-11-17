@@ -170,6 +170,13 @@ const INITIAL_EVENTS: BattleEvent[] = [
   },
 ];
 
+interface FirstBloodBannerInfo {
+  id: string;
+  teamName: string;
+  challengeName: string;
+  points: number;
+}
+
 export default function App() {
   const canvasMountRef = useRef<HTMLDivElement | null>(null);
   const sceneInstanceRef = useRef<CyberRangeScene | null>(null);
@@ -192,6 +199,9 @@ export default function App() {
   const [attackFollowEnabled, setAttackFollowEnabled] = useState(false);
   const [attackFollowBanner, setAttackFollowBanner] =
     useState<AttackFollowBannerInfo | null>(null);
+  const [firstBloodBanner, setFirstBloodBanner] =
+    useState<FirstBloodBannerInfo | null>(null);
+  const firstBloodTimerRef = useRef<number | null>(null);
   const [webglError, setWebglError] = useState<string | null>(null);
 
   const [directorTeam, setDirectorTeam] = useState<string>(
@@ -270,6 +280,7 @@ export default function App() {
       recordMetricDelta(type, zone.id);
 
       if (type === 'firstBlood') {
+        const earnedPoints = points ?? ch.points;
         setFirstBloodCards((prev) => [
           {
             id: `fb-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
@@ -282,10 +293,32 @@ export default function App() {
           },
           ...prev.slice(0, 9),
         ]);
+
+        if (firstBloodTimerRef.current !== null) {
+          window.clearTimeout(firstBloodTimerRef.current);
+        }
+        setFirstBloodBanner({
+          id: `fb-banner-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+          teamName,
+          challengeName: ch.name,
+          points: earnedPoints,
+        });
+        firstBloodTimerRef.current = window.setTimeout(() => {
+          setFirstBloodBanner(null);
+          firstBloodTimerRef.current = null;
+        }, 5000);
       }
     },
     [recordMetricDelta]
   );
+
+  useEffect(() => {
+    return () => {
+      if (firstBloodTimerRef.current !== null) {
+        window.clearTimeout(firstBloodTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSwitchVersion = useCallback((ver: SandboxVersion) => {
     setSandboxVersion(ver);
@@ -595,6 +628,52 @@ export default function App() {
       {/* 顶部 Header 栏 (72px，居中渐变，两侧透明) */}
       <HeaderBar onResetCamera={handleResetView} wireframeMode={isWireframe} />
 
+      {/* 一血事件顶部播报面板（标题栏下方，持续 5 秒后自动消失） */}
+      {firstBloodBanner && (
+        <div
+          key={firstBloodBanner.id}
+          data-testid="first-blood-banner"
+          role="status"
+          aria-live="polite"
+          className={`fixed top-[78px] left-1/2 z-30 pointer-events-none max-w-[min(680px,90vw)] animate-first-blood-banner ${
+            isWireframe
+              ? 'border border-[#ffd24a]/80 bg-black/88 px-5 py-2.5 shadow-[0_0_24px_rgba(255,210,74,0.28)]'
+              : 'clip-octa-12 border border-[#ffd24a]/75 bg-[#0a0e17]/95 px-6 py-2.5 shadow-[0_0_32px_rgba(255,210,74,0.35)]'
+          }`}
+        >
+          {isWireframe && (
+            <>
+              <span className="pointer-events-none absolute -top-[1px] -left-[1px] w-2.5 h-2.5 border-t-2 border-l-2 border-[#ffd24a]" />
+              <span className="pointer-events-none absolute -top-[1px] -right-[1px] w-2.5 h-2.5 border-t-2 border-r-2 border-[#ffd24a]" />
+              <span className="pointer-events-none absolute -bottom-[1px] -left-[1px] w-2.5 h-2.5 border-b-2 border-l-2 border-[#ffd24a]" />
+              <span className="pointer-events-none absolute -bottom-[1px] -right-[1px] w-2.5 h-2.5 border-b-2 border-r-2 border-[#ffd24a]" />
+            </>
+          )}
+          <div className="flex items-center justify-center gap-2.5 text-center">
+            <Trophy className="w-4 h-4 shrink-0 text-[#ffd24a] drop-shadow-[0_0_8px_rgba(255,210,74,0.8)]" />
+            <p className="text-xs sm:text-sm font-medium tracking-wide text-[#f8fafc] leading-snug">
+              恭喜
+              <span className="font-bold text-[#ffd24a]">
+                【{firstBloodBanner.teamName}】
+              </span>
+              拿下题目
+              <span className="font-bold text-[#00d4ff]">
+                【{firstBloodBanner.challengeName}】
+              </span>
+              一血，获得
+              <span
+                className={`mx-0.5 font-bold text-[#00ff88] ${
+                  isWireframe ? 'font-hud-mono' : 'font-tech-num'
+                }`}
+              >
+                {firstBloodBanner.points}
+              </span>
+              分！
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 左侧三卡片面板（支持平滑左滑隐藏 .slide-out-left） */}
       <div
         className={`fixed top-[76px] bottom-3 left-3 z-10 w-[280px] xl:w-[308px] 2xl:w-[328px] pointer-events-none panel-rail ${
@@ -657,7 +736,9 @@ export default function App() {
         {attackFollowBanner && (
           <div
             data-testid="attack-follow-banner"
-            className="absolute top-2 left-[calc(50%-1.25rem)] -translate-x-1/2 z-20 pointer-events-none max-w-[calc(100%-5.25rem)] clip-octa-12 px-4 py-2 border bg-[#0a0e17]/92 shadow-[0_0_24px_rgba(0,212,255,0.28)] flex flex-col gap-1"
+            className={`absolute left-[calc(50%-1.25rem)] -translate-x-1/2 z-20 pointer-events-none max-w-[calc(100%-5.25rem)] clip-octa-12 px-4 py-2 border bg-[#0a0e17]/92 shadow-[0_0_24px_rgba(0,212,255,0.28)] flex flex-col gap-1 transition-[top] duration-300 ${
+              firstBloodBanner ? 'top-14' : 'top-2'
+            }`}
             style={{
               backdropFilter: 'blur(8px)',
               borderColor: attackFollowBanner.isFirstBlood

@@ -2097,11 +2097,9 @@ export class CyberRangeScene {
           }
         );
 
-        const labelHeights = [2.20, 2.28, 2.36, 2.28, 2.20];
-        const topSolverHeights = [2.82, 2.90, 2.98, 2.90, 2.82];
+        const labelHeights = [2.62, 2.74, 2.86, 2.74, 2.62];
         const nodeUd = node.userData as ChallengeNodeUserData;
         nodeUd.label.position.y = labelHeights[idx % 5];
-        nodeUd.topSolversSprite.position.y = topSolverHeights[idx % 5];
         nodeUd.onAttemptExpired = () => {
           const zr = this.zones.get(zCfg.id);
           if (zr) this.refreshZoneTelemetry(zr);

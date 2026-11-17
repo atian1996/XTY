@@ -166,7 +166,7 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                 wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
               }`}
             >
-              全局态势概览
+              全局概览
             </h2>
           </div>
         </div>
@@ -348,13 +348,6 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
               }`}
             >
               各方向题目解题进度
-              <span
-                className={`hidden 2xl:inline text-[11px] font-normal ml-1 ${
-                  wireframeMode ? 'text-[#00d4ff]/80 font-hud-mono' : 'text-[#9ca3af]'
-                }`}
-              >
-                (Direction)
-              </span>
             </h2>
           </div>
         </div>
@@ -486,7 +479,7 @@ export const LeftDashboard: React.FC<LeftDashboardProps> = ({
                 wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
               }`}
             >
-              实时一血榜
+              一血榜
             </h2>
           </div>
 

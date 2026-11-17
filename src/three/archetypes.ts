@@ -9,7 +9,6 @@ import {
 } from '../types/cyberRange';
 import {
   createChallengeHoloLabel,
-  createChallengeTopSolversSprite,
   createConsoleScreenTexture,
   createContactShadowTexture,
   createGpuFanFaceTexture,
@@ -80,7 +79,6 @@ export interface ChallengeNodeUserData {
   scanRing: THREE.Mesh;
   firstBloodCrown: THREE.Group;
   label: THREE.Sprite;
-  topSolversSprite: THREE.Sprite;
   fxAnchor: THREE.Object3D;
   pulsePhase: number;
   hovered: boolean;
@@ -2978,14 +2976,10 @@ export function createChallengeNode(
   solvedBeamGroup.visible = initSolvedMix > 0.005;
   group.add(solvedBeamGroup);
 
-  // ⑥ 题目全息铭牌（v0.3 / v0.4 下呈现极简半透明暗底青框中文小标签）+ 前三攻破队伍榜
+  // ⑥ 设备题目名称 + 前三名解出队伍 合并全息面板
   const label = createChallengeHoloLabel(challenge, zoneColorHex, palette.maxAnisotropy);
-  label.position.y = 2.24;
+  label.position.y = 2.68;
   group.add(label);
-
-  const topSolversSprite = createChallengeTopSolversSprite(challenge, palette.maxAnisotropy);
-  topSolversSprite.position.y = 2.90;
-  group.add(topSolversSprite);
 
   // ⑦ 特效锚点
   const fxAnchor = new THREE.Object3D();
@@ -3037,7 +3031,6 @@ export function createChallengeNode(
     scanRing,
     firstBloodCrown,
     label,
-    topSolversSprite,
     fxAnchor,
     pulsePhase: Math.random() * Math.PI * 2,
     hovered: false,
@@ -3060,22 +3053,24 @@ export function createChallengeNode(
       label.userData.redraw(userData.state, {
         team: challenge.solvedBy || challenge.activeAttacker,
         firstBlood: challenge.firstBlood,
-        hovered: hover,
+        hovered: hover || userData.selected,
         isV03: true,
         isV03Abstract: true,
         isTronWireframe: userData.version === '0.3',
-      });
-      topSolversSprite.userData.redraw?.(challenge.topSolvers || [], {
-        hovered: hover || userData.selected,
-        isTronWireframe: userData.version === '0.3',
+        topSolvers: challenge.topSolvers || [],
       });
     },
     setSelected(sel: boolean) {
       userData.selected = sel;
       (selectRing.material as THREE.MeshBasicMaterial).opacity = sel ? 0.9 : 0;
-      topSolversSprite.userData.redraw?.(challenge.topSolvers || [], {
+      label.userData.redraw(userData.state, {
+        team: challenge.solvedBy || challenge.activeAttacker,
+        firstBlood: challenge.firstBlood,
         hovered: userData.hovered || sel,
+        isV03: true,
+        isV03Abstract: true,
         isTronWireframe: userData.version === '0.3',
+        topSolvers: challenge.topSolvers || [],
       });
     },
     setLabelMode(mode: LabelDisplayMode) {
@@ -3090,14 +3085,11 @@ export function createChallengeNode(
       label.userData.redraw(userData.state, {
         team: challenge.solvedBy || challenge.activeAttacker,
         firstBlood: challenge.firstBlood,
-        hovered: userData.hovered,
+        hovered: userData.hovered || userData.selected,
         isV03: true,
         isV03Abstract: true,
         isTronWireframe: ver === '0.3',
-      });
-      topSolversSprite.userData.redraw?.(challenge.topSolvers || [], {
-        hovered: userData.hovered || userData.selected,
-        isTronWireframe: ver === '0.3',
+        topSolvers: challenge.topSolvers || [],
       });
     },
     setWireframeMix(mix: number) {
@@ -3161,10 +3153,11 @@ export function createChallengeNode(
       userData.compressTimer = 0.25;
       label.userData.redraw('failed', {
         attempts,
-        hovered: userData.hovered,
+        hovered: userData.hovered || userData.selected,
         isV03: true,
         isV03Abstract: true,
         isTronWireframe: userData.version === '0.3',
+        topSolvers: challenge.topSolvers || [],
       });
     },
     transitionState(
@@ -3201,14 +3194,11 @@ export function createChallengeNode(
       label.userData.redraw(nextState, {
         team: payload.team || challenge.solvedBy || challenge.activeAttacker,
         firstBlood: challenge.firstBlood,
-        hovered: userData.hovered,
+        hovered: userData.hovered || userData.selected,
         isV03: true,
         isV03Abstract: true,
         isTronWireframe: userData.version === '0.3',
-      });
-      topSolversSprite.userData.redraw?.(challenge.topSolvers || [], {
-        hovered: userData.hovered || userData.selected,
-        isTronWireframe: userData.version === '0.3',
+        topSolvers: challenge.topSolvers || [],
       });
     },
   };
@@ -3281,10 +3271,11 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
         team: ud.challenge.solvedBy || ud.challenge.activeAttacker,
         firstBlood: ud.challenge.firstBlood,
         attempts: ud.challenge.totalAttempts,
-        hovered: ud.hovered,
+        hovered: ud.hovered || ud.selected,
         isV03: true,
         isV03Abstract: true,
         isTronWireframe: ud.version === '0.3',
+        topSolvers: ud.challenge.topSolvers || [],
       });
     }
   }
@@ -3399,17 +3390,16 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     ud.selectRing.rotation.z += dt * 2.2;
   }
 
-  // 默认在每台服务器上方悬浮轻量级清晰中文短标签 + 发光状态点，尺寸精巧不遮挡下方 3D 硬件模型
+  // 设备上方合并悬浮面板（题目名称 + 前三名解出队伍，整体字体放大清晰）
   const shouldShowLabel =
     ud.labelMode === 'full' ||
     ud.labelMode === 'compact' ||
     (ud.labelMode === 'hover' && (ud.hovered || ud.selected));
 
   ud.label.visible = shouldShowLabel;
-  ud.topSolversSprite.visible = shouldShowLabel;
   if (shouldShowLabel) {
-    const baseLabelW = ud.hovered || ud.selected ? 1.12 : 0.88;
-    const baseLabelH = ud.hovered || ud.selected ? 0.38 : 0.30;
+    const baseLabelW = ud.hovered || ud.selected ? 1.92 : 1.68;
+    const baseLabelH = ud.hovered || ud.selected ? 1.08 : 0.94;
     let flipY = 1.0;
     if (ud.labelFlipTimer > 0) {
       ud.labelFlipTimer = Math.max(0, ud.labelFlipTimer - dt);
@@ -3419,14 +3409,6 @@ export function updateChallengeNode(node: THREE.Group, dt: number, elapsed: numb
     ud.label.scale.set(
       THREE.MathUtils.damp(ud.label.scale.x, baseLabelW, 14, dt),
       THREE.MathUtils.damp(ud.label.scale.y, baseLabelH * flipY, 18, dt),
-      1
-    );
-
-    const baseSolversW = ud.hovered || ud.selected ? 1.54 : 1.32;
-    const baseSolversH = ud.hovered || ud.selected ? 0.77 : 0.66;
-    ud.topSolversSprite.scale.set(
-      THREE.MathUtils.damp(ud.topSolversSprite.scale.x, baseSolversW, 14, dt),
-      THREE.MathUtils.damp(ud.topSolversSprite.scale.y, baseSolversH, 14, dt),
       1
     );
   }

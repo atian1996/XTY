@@ -438,7 +438,7 @@ const V03_SHORT_CHALLENGE_NAMES: Record<string, string> = {
 };
 
 /**
- * 5) 题目全息铭牌 Holo Label Sprite (768×260，紧凑高对比，避免遮挡精致3D设备)
+ * 5) 设备题目名称 + 前三解出队伍 合并全息面板 Sprite (768×430，字体加大、紧凑高对比)
  */
 export function createChallengeHoloLabel(
   challenge: Challenge,
@@ -447,7 +447,7 @@ export function createChallengeHoloLabel(
 ) {
   const canvas = document.createElement('canvas');
   canvas.width = 768;
-  canvas.height = 260;
+  canvas.height = 430;
   const ctx = canvas.getContext('2d')!;
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -464,10 +464,72 @@ export function createChallengeHoloLabel(
       depthWrite: false,
     })
   );
-  sprite.scale.set(1.42, 0.48, 1);
+  sprite.scale.set(1.68, 0.94, 1);
 
   let v03Mode = false;
   let v03AbstractMode = true;
+  let tronWireframeMode = false;
+
+  const fitText = (text: string, maxW: number): string => {
+    if (ctx.measureText(text).width <= maxW) return text;
+    let cut = text;
+    while (cut.length > 1 && ctx.measureText(`${cut}…`).width > maxW) {
+      cut = cut.slice(0, -1);
+    }
+    return `${cut}…`;
+  };
+
+  const drawHexAvatar = (
+    cx: number,
+    cy: number,
+    r: number,
+    teamColor: string,
+    initialChar: string,
+    filled: boolean,
+    isTron: boolean
+  ) => {
+    ctx.save();
+    ctx.beginPath();
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2 - Math.PI / 2;
+      const hx = cx + Math.cos(a) * r;
+      const hy = cy + Math.sin(a) * r;
+      if (k === 0) ctx.moveTo(hx, hy);
+      else ctx.lineTo(hx, hy);
+    }
+    ctx.closePath();
+
+    if (filled) {
+      if (isTron) {
+        ctx.fillStyle = 'rgba(0, 212, 255, 0.12)';
+        ctx.fill();
+        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = teamColor;
+        ctx.stroke();
+      } else {
+        const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+        grad.addColorStop(0, `${teamColor}cc`);
+        grad.addColorStop(1, 'rgba(10, 14, 23, 0.92)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = teamColor;
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = isTron ? '#e0f7ff' : '#ffffff';
+      ctx.font = '800 30px "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(initialChar, cx, cy + 1.5);
+    } else {
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = isTron ? 'rgba(0, 184, 230, 0.30)' : 'rgba(148, 163, 184, 0.32)';
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
 
   const redraw = (
     state: Challenge['state'] | 'failed',
@@ -478,6 +540,8 @@ export function createChallengeHoloLabel(
       hovered?: boolean;
       isV03?: boolean;
       isV03Abstract?: boolean;
+      isTronWireframe?: boolean;
+      topSolvers?: ChallengeSolver[];
     } = {}
   ) => {
     if (extra.isV03 !== undefined) {
@@ -486,96 +550,243 @@ export function createChallengeHoloLabel(
     if (extra.isV03Abstract !== undefined) {
       v03AbstractMode = extra.isV03Abstract;
     }
-    ctx.clearRect(0, 0, 768, 260);
+    if (extra.isTronWireframe !== undefined) {
+      tronWireframeMode = extra.isTronWireframe;
+    }
+    ctx.clearRect(0, 0, 768, 430);
 
     if (v03Mode && v03AbstractMode) {
-      // v0.3 专属：每台服务器上方悬浮的极简清晰全息标签 (短中文赛题名 + 发光状态指示点，极简透明暗底、零眩光、不遮挡 3D 模型)
+      const isTron = tronWireframeMode;
+      const hovered = Boolean(extra.hovered);
       const isAttackingOrFailed = state === 'attacking' || state === 'failed';
-      const isSolved = state === 'solved';
+      const isSolved = state === 'solved' || challenge.solveCount >= 1;
 
       const borderCol = isAttackingOrFailed
         ? '#ff3b18'
-        : extra.hovered
+        : hovered
         ? '#00f0ff'
         : isSolved
-        ? '#00d4ff'
+        ? isTron
+          ? '#00d4ff'
+          : '#10ff88'
+        : isTron
+        ? '#00b8e6'
         : '#0ea5e9';
 
       const dotCoreCol = isAttackingOrFailed
         ? '#ff3b18'
         : isSolved
-        ? '#00f0ff'
+        ? isTron
+          ? '#00f0ff'
+          : '#22ff88'
         : '#38bdf8';
 
       const dotHaloCol = isAttackingOrFailed
         ? 'rgba(255, 59, 24, 0.65)'
         : isSolved
-        ? 'rgba(0, 240, 255, 0.62)'
+        ? isTron
+          ? 'rgba(0, 240, 255, 0.62)'
+          : 'rgba(16, 255, 136, 0.65)'
         : 'rgba(56, 189, 248, 0.52)';
 
-      // 纤细紧凑的切角全息面板外框，上下留白，确保俯视角锐利清晰且不遮挡下方机柜
-      const boxX = 64;
-      const boxY = 52;
-      const boxW = 640;
-      const boxH = 156;
-      drawCutCornerRect(ctx, boxX, boxY, boxW, boxH, 22);
-      ctx.fillStyle = extra.hovered
-        ? 'rgba(5, 14, 30, 0.94)'
-        : 'rgba(4, 10, 22, 0.86)';
-      ctx.fill();
+      const padX = 16;
+      const padY = 14;
+      const boxW = 768 - padX * 2;
+      const boxH = 430 - padY * 2;
 
-      strokeMoistNeon(
-        ctx,
-        borderCol,
-        isAttackingOrFailed ? 'rgba(255, 59, 24, 0.18)' : 'rgba(0, 216, 255, 0.18)',
-        isAttackingOrFailed ? 'rgba(255, 59, 24, 0.38)' : 'rgba(0, 216, 255, 0.38)',
-        extra.hovered ? 3.0 : 2.1
-      );
+      if (isTron) {
+        ctx.save();
+        ctx.fillStyle = hovered ? 'rgba(2, 8, 20, 0.65)' : 'rgba(2, 6, 16, 0.46)';
+        ctx.fillRect(padX, padY, boxW, boxH);
 
-      // 顶部与底部发丝级青/红高光微刻度线
-      ctx.fillStyle = borderCol;
-      ctx.fillRect(boxX + 34, boxY - 2, 72, 4);
-      ctx.fillRect(boxX + boxW - 106, boxY + boxH - 2, 72, 4);
+        ctx.strokeStyle = isAttackingOrFailed
+          ? 'rgba(255, 59, 24, 0.65)'
+          : hovered
+          ? 'rgba(0, 212, 255, 0.72)'
+          : 'rgba(0, 184, 230, 0.44)';
+        ctx.lineWidth = 1.6;
+        ctx.strokeRect(padX, padY, boxW, boxH);
 
-      // 左侧：柔和无眩光的发光状态点 (Glowing Status Dot)
-      const dotX = 136;
-      const dotY = 130;
-      const haloGrad = ctx.createRadialGradient(dotX, dotY, 4, dotX, dotY, 32);
+        const cLen = 24;
+        ctx.strokeStyle = borderCol;
+        ctx.lineWidth = 3.0;
+        ctx.beginPath();
+        ctx.moveTo(padX, padY + cLen);
+        ctx.lineTo(padX, padY);
+        ctx.lineTo(padX + cLen, padY);
+        ctx.moveTo(padX + boxW - cLen, padY);
+        ctx.lineTo(padX + boxW, padY);
+        ctx.lineTo(padX + boxW, padY + cLen);
+        ctx.moveTo(padX, padY + boxH - cLen);
+        ctx.lineTo(padX, padY + boxH);
+        ctx.lineTo(padX + cLen, padY + boxH);
+        ctx.moveTo(padX + boxW - cLen, padY + boxH);
+        ctx.lineTo(padX + boxW, padY + boxH);
+        ctx.lineTo(padX + boxW, padY + boxH - cLen);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        drawCutCornerRect(ctx, padX, padY, boxW, boxH, 20);
+        ctx.fillStyle = hovered ? 'rgba(6, 16, 34, 0.95)' : 'rgba(4, 11, 24, 0.90)';
+        ctx.fill();
+
+        strokeMoistNeon(
+          ctx,
+          borderCol,
+          isAttackingOrFailed
+            ? 'rgba(255, 59, 24, 0.18)'
+            : isSolved
+            ? 'rgba(16, 255, 136, 0.18)'
+            : 'rgba(0, 216, 255, 0.18)',
+          isAttackingOrFailed
+            ? 'rgba(255, 59, 24, 0.38)'
+            : isSolved
+            ? 'rgba(16, 255, 136, 0.40)'
+            : 'rgba(0, 216, 255, 0.38)',
+          hovered ? 3.2 : 2.3
+        );
+
+        ctx.fillStyle = borderCol;
+        ctx.fillRect(padX + 34, padY - 2, 82, 4);
+        ctx.fillRect(padX + boxW - 116, padY + boxH - 2, 82, 4);
+      }
+
+      // 头部区：状态指示点 + 大号题目名称
+      const headerMidY = padY + 60;
+      const dotX = padX + 52;
+      const haloGrad = ctx.createRadialGradient(dotX, headerMidY, 4, dotX, headerMidY, 32);
       haloGrad.addColorStop(0, dotHaloCol);
-      haloGrad.addColorStop(0.55, isAttackingOrFailed ? 'rgba(255, 59, 24, 0.18)' : 'rgba(0, 212, 255, 0.18)');
+      haloGrad.addColorStop(
+        0.55,
+        isAttackingOrFailed
+          ? 'rgba(255, 59, 24, 0.18)'
+          : isSolved && !isTron
+          ? 'rgba(16, 255, 136, 0.20)'
+          : 'rgba(0, 212, 255, 0.18)'
+      );
       haloGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = haloGrad;
       ctx.beginPath();
-      ctx.arc(dotX, dotY, 32, 0, Math.PI * 2);
+      ctx.arc(dotX, headerMidY, 32, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = dotCoreCol;
       ctx.beginPath();
-      ctx.arc(dotX, dotY, 13, 0, Math.PI * 2);
+      ctx.arc(dotX, headerMidY, 14, 0, Math.PI * 2);
       ctx.fill();
 
-      // 状态点内侧锐利高光针眼（增强精致立体感）
-      ctx.fillStyle = isAttackingOrFailed ? '#ffd6cc' : '#e0fbff';
+      ctx.fillStyle = isAttackingOrFailed ? '#ffd6cc' : '#ecfeff';
       ctx.beginPath();
-      ctx.arc(dotX - 3, dotY - 3, 4.2, 0, Math.PI * 2);
+      ctx.arc(dotX - 3, headerMidY - 3, 4.5, 0, Math.PI * 2);
       ctx.fill();
 
-      // 右侧：高清晰、极锐利的简体中文短赛题名称（严格零 shadowBlur 眩光）
       const shortName =
         V03_SHORT_CHALLENGE_NAMES[challenge.id] ||
-        (challenge.name.length > 5 ? challenge.name.slice(0, 5) : challenge.name);
+        (challenge.name.length > 7 ? challenge.name.slice(0, 7) : challenge.name);
       ctx.save();
       ctx.shadowBlur = 0;
       ctx.fillStyle = isAttackingOrFailed
         ? '#ffd4cc'
-        : extra.hovered
+        : hovered
         ? '#ffffff'
-        : '#e6f9ff';
-      ctx.font = '700 84px "Chakra Petch", "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", sans-serif';
+        : isSolved && !isTron
+        ? '#d1fae5'
+        : '#ebfbff';
+      ctx.font =
+        '800 72px "Chakra Petch", "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
-      ctx.fillText(shortName, 188, 132);
+      ctx.fillText(fitText(shortName, boxW - 124), padX + 98, headerMidY + 3);
       ctx.restore();
+
+      // 标题与前三名列表之间的横向分割线
+      const headerBottomY = padY + 116;
+      ctx.save();
+      ctx.strokeStyle = isTron
+        ? 'rgba(0, 184, 230, 0.42)'
+        : isSolved
+        ? 'rgba(16, 255, 136, 0.34)'
+        : 'rgba(0, 212, 255, 0.32)';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(padX + 24, headerBottomY);
+      ctx.lineTo(padX + boxW - 24, headerBottomY);
+      ctx.stroke();
+      ctx.restore();
+
+      // 主体区：前三名攻破队伍列表（序号 + 队伍头像 + 队伍名称，整体字体加大）
+      const solvers = extra.topSolvers ?? challenge.topSolvers ?? [];
+      const listTop = headerBottomY + 6;
+      const listH = padY + boxH - listTop - 8;
+      const rowH = listH / 3;
+      const rankColorsSolid = ['#ffd24a', '#e2e8f0', '#fb923c'];
+      const rankColorsTron = ['#d4af37', '#cbd5e1', '#d97706'];
+
+      for (let i = 0; i < 3; i++) {
+        const cy = listTop + rowH * (i + 0.5);
+        const solver = solvers[i];
+
+        if (i > 0) {
+          const divY = listTop + rowH * i;
+          ctx.save();
+          if (isTron) {
+            ctx.setLineDash([6, 5]);
+            ctx.strokeStyle = 'rgba(0, 184, 230, 0.28)';
+          } else {
+            ctx.strokeStyle = 'rgba(0, 212, 255, 0.16)';
+          }
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(padX + 26, divY);
+          ctx.lineTo(padX + boxW - 26, divY);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 1. 序号
+        ctx.save();
+        ctx.font = '800 46px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = solver
+          ? isTron
+            ? rankColorsTron[i]
+            : rankColorsSolid[i]
+          : isTron
+          ? 'rgba(0, 184, 230, 0.36)'
+          : 'rgba(148, 163, 184, 0.42)';
+        ctx.fillText(String(i + 1), padX + 50, cy + 2);
+        ctx.restore();
+
+        // 2. 队伍头像 (六边形徽章)
+        drawHexAvatar(
+          padX + 120,
+          cy,
+          29,
+          solver?.teamColor || '#00b8e6',
+          solver ? solver.teamName.slice(0, 1) : '',
+          Boolean(solver),
+          isTron
+        );
+
+        // 3. 队伍名称
+        ctx.save();
+        ctx.shadowBlur = 0;
+        ctx.font =
+          '700 46px "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        if (solver) {
+          ctx.fillStyle = isTron ? '#b8f0ff' : '#f8fafc';
+          ctx.fillText(fitText(solver.teamName, boxW - 196), padX + 170, cy + 2);
+        } else {
+          ctx.fillStyle = isTron
+            ? 'rgba(0, 184, 230, 0.36)'
+            : 'rgba(148, 163, 184, 0.45)';
+          ctx.fillText('—', padX + 170, cy + 2);
+        }
+        ctx.restore();
+      }
 
       texture.needsUpdate = true;
       return;
@@ -1735,8 +1946,8 @@ const V04_ZONE_CHINESE_TITLES: Record<string, string> = {
 
 export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): THREE.Sprite {
   const canvas = document.createElement('canvas');
-  canvas.width = 960;
-  canvas.height = 220;
+  canvas.width = 1040;
+  canvas.height = 280;
   const ctx = canvas.getContext('2d')!;
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -1753,9 +1964,9 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
       depthWrite: false,
     })
   );
-  // 仅显示分区图标与名称，悬浮于各区设备与前三攻破榜上方
-  sprite.scale.set(2.45, 0.56, 1);
-  sprite.position.set(0, 4.45, 0);
+  // 仅显示分区图标与名称（面板与字体同步加大，悬浮于各区设备上方）
+  sprite.scale.set(3.40, 0.92, 1);
+  sprite.position.set(0, 4.68, 0);
 
   const v03ZhTitle = V03_ZONE_CHINESE_TITLES[zone.id] || zone.shortName;
   const v04ZhTitle = V04_ZONE_CHINESE_TITLES[zone.id] || zone.shortName;
@@ -1784,24 +1995,24 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
     if (tronWireframeFlag !== undefined) {
       isTronWireframePanel = tronWireframeFlag;
     }
-    ctx.clearRect(0, 0, 960, 220);
+    ctx.clearRect(0, 0, 1040, 280);
 
-    const padX = 28;
-    const padY = 20;
-    const w = 960 - padX * 2;
-    const h = 220 - padY * 2;
+    const padX = 24;
+    const padY = 18;
+    const w = 1040 - padX * 2;
+    const h = 280 - padY * 2;
     const centerY = padY + h / 2;
 
     if (isTronWireframePanel) {
       // 0.1版（赛博线框风）：全透明 L 型折线框 + 左侧六边形线框图标 + 分区名称
       ctx.save();
-      ctx.strokeStyle = 'rgba(0, 168, 214, 0.42)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(0, 168, 214, 0.44)';
+      ctx.lineWidth = 1.6;
       ctx.strokeRect(padX, padY, w, h);
 
-      const cLen = 30;
+      const cLen = 34;
       ctx.strokeStyle = '#00b8e6';
-      ctx.lineWidth = 3.2;
+      ctx.lineWidth = 3.6;
       ctx.beginPath();
       ctx.moveTo(padX, padY + cLen);
       ctx.lineTo(padX, padY);
@@ -1818,10 +2029,10 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
       ctx.stroke();
 
       ctx.strokeStyle = 'rgba(0, 184, 230, 0.5)';
-      ctx.lineWidth = 1.5;
-      for (let i = 0; i <= 16; i++) {
-        const tx = padX + 90 + i * 44;
-        const th = i % 4 === 0 ? 9 : 4;
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i <= 18; i++) {
+        const tx = padX + 96 + i * 46;
+        const th = i % 4 === 0 ? 11 : 5;
         ctx.beginPath();
         ctx.moveTo(tx, padY);
         ctx.lineTo(tx, padY + th);
@@ -1830,15 +2041,15 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
         ctx.stroke();
       }
 
-      const iconCx = 144;
+      const iconCx = 148;
       const iconCy = centerY;
       ctx.strokeStyle = '#00a8d6';
-      ctx.lineWidth = 2.0;
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
-        const hx = iconCx + Math.cos(a) * 58;
-        const hy = iconCy + Math.sin(a) * 58;
+        const hx = iconCx + Math.cos(a) * 72;
+        const hy = iconCy + Math.sin(a) * 72;
         if (i === 0) ctx.moveTo(hx, hy);
         else ctx.lineTo(hx, hy);
       }
@@ -1847,28 +2058,33 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
 
       ctx.save();
       ctx.translate(iconCx, iconCy);
-      ctx.scale(0.76, 0.76);
+      ctx.scale(0.95, 0.95);
       drawV02VectorIcon(ctx, zone.v02Icon, 0, 0, '#00b8e6', true);
       ctx.restore();
 
-      ctx.fillStyle = 'rgba(0, 184, 230, 0.45)';
-      ctx.fillRect(242, padY + 28, 2, h - 56);
+      ctx.fillStyle = 'rgba(0, 184, 230, 0.48)';
+      ctx.fillRect(256, padY + 32, 2.5, h - 64);
 
-      ctx.fillStyle = '#9ce2f2';
-      ctx.font =
-        '600 84px "Share Tech Mono", "Chakra Petch", "PingFang SC", "Microsoft YaHei", sans-serif';
+      const titleText = v03ZhTitle;
+      let fontPx = 122;
+      ctx.font = `700 ${fontPx}px "Share Tech Mono", "Chakra Petch", "PingFang SC", "Microsoft YaHei", sans-serif`;
+      while (fontPx > 92 && ctx.measureText(titleText).width > 690) {
+        fontPx -= 4;
+        ctx.font = `700 ${fontPx}px "Share Tech Mono", "Chakra Petch", "PingFang SC", "Microsoft YaHei", sans-serif`;
+      }
+      ctx.fillStyle = '#aeeaff';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(v03ZhTitle, 284, centerY + 2);
+      ctx.fillText(titleText, 296, centerY + 3);
       ctx.restore();
 
       texture.needsUpdate = true;
       return;
     }
 
-    // 0.2版：暗底切角科技边框 + 左侧六边形科技图标 + 居中分区名称（无进度条）
-    drawCutCornerRect(ctx, padX, padY, w, h, 24);
-    ctx.fillStyle = 'rgba(4, 11, 24, 0.86)';
+    // 0.2版：暗底切角科技边框 + 左侧六边形科技图标 + 居中大号分区名称
+    drawCutCornerRect(ctx, padX, padY, w, h, 28);
+    ctx.fillStyle = 'rgba(4, 11, 24, 0.88)';
     ctx.fill();
 
     strokeMoistNeon(
@@ -1876,54 +2092,59 @@ export function createV03ZoneLabelSprite(zone: ZoneConfig, maxAnisotropy = 4): T
       '#00d8ff',
       'rgba(0, 216, 255, 0.18)',
       'rgba(0, 216, 255, 0.38)',
-      2.3
+      2.6
     );
 
-    drawCutCornerRect(ctx, padX + 10, padY + 10, w - 20, h - 20, 18);
-    ctx.lineWidth = 1.0;
+    drawCutCornerRect(ctx, padX + 10, padY + 10, w - 20, h - 20, 20);
+    ctx.lineWidth = 1.2;
     ctx.strokeStyle = 'rgba(0, 212, 255, 0.28)';
     ctx.stroke();
 
     ctx.fillStyle = '#00e5ff';
-    ctx.fillRect(padX + 46, padY - 2, 108, 4);
-    ctx.fillRect(padX + w - 154, padY + h - 2, 108, 4);
+    ctx.fillRect(padX + 48, padY - 2, 120, 5);
+    ctx.fillRect(padX + w - 168, padY + h - 3, 120, 5);
 
-    const iconCx = 144;
+    const iconCx = 148;
     const iconCy = centerY;
     ctx.save();
-    ctx.strokeStyle = 'rgba(0, 212, 255, 0.42)';
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = 'rgba(0, 212, 255, 0.45)';
+    ctx.lineWidth = 2.2;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
-      const hx = iconCx + Math.cos(a) * 60;
-      const hy = iconCy + Math.sin(a) * 60;
+      const hx = iconCx + Math.cos(a) * 74;
+      const hy = iconCy + Math.sin(a) * 74;
       if (i === 0) ctx.moveTo(hx, hy);
       else ctx.lineTo(hx, hy);
     }
     ctx.closePath();
-    ctx.fillStyle = 'rgba(0, 180, 216, 0.10)';
+    ctx.fillStyle = 'rgba(0, 180, 216, 0.12)';
     ctx.fill();
     ctx.stroke();
     ctx.restore();
 
     ctx.save();
     ctx.translate(iconCx, iconCy);
-    ctx.scale(0.8, 0.8);
+    ctx.scale(0.98, 0.98);
     drawV02VectorIcon(ctx, zone.v02Icon, 0, 0, '#00e5ff', true);
     ctx.restore();
 
-    ctx.fillStyle = 'rgba(0, 200, 240, 0.35)';
-    ctx.fillRect(242, padY + 28, 2, h - 56);
+    ctx.fillStyle = 'rgba(0, 200, 240, 0.38)';
+    ctx.fillRect(256, padY + 32, 2.5, h - 64);
 
     ctx.save();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = '#e8fbff';
-    ctx.font =
-      '700 86px "Chakra Petch", "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", sans-serif';
+    const titleText = isV03ZonePanel ? v03ZhTitle : v04ZhTitle;
+    let fontPx = 124;
+    ctx.font = `800 ${fontPx}px "Chakra Petch", "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", sans-serif`;
+    while (fontPx > 92 && ctx.measureText(titleText).width > 690) {
+      fontPx -= 4;
+      ctx.font = `800 ${fontPx}px "Chakra Petch", "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", sans-serif`;
+    }
+    ctx.fillStyle = '#ebfbff';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(isV03ZonePanel ? v03ZhTitle : v04ZhTitle, 284, centerY + 2);
+    ctx.fillText(titleText, 296, centerY + 3);
     ctx.restore();
 
     texture.needsUpdate = true;

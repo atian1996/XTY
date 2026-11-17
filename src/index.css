@@ -147,6 +147,21 @@
   animation: slideInBottomGreen 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes firstBloodBannerIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -14px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.animate-first-blood-banner {
+  animation: firstBloodBannerIn 0.36s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 @keyframes barCompleteFlash {
   0%, 100% {
     filter: brightness(1);

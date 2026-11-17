@@ -109,7 +109,7 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
                 wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
               }`}
             >
-              实时积分排行榜
+              队伍排名TOP10
             </h2>
           </div>
         </div>
@@ -299,7 +299,7 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
                 wireframeMode ? 'text-white' : 'text-[#e5e7eb]'
               }`}
             >
-              实时动态
+              攻击动态
             </h2>
           </div>
         </div>
@@ -372,6 +372,27 @@ export const RightDashboard: React.FC<RightDashboardProps> = ({
                           }`}
                         >
                           [一血]
+                        </span>
+                      )}
+                      {typeof ev.points === 'number' && (
+                        <span
+                          className={
+                            wireframeMode
+                              ? 'text-white'
+                              : ev.type === 'firstBlood'
+                              ? 'text-[#ffd24a]'
+                              : 'text-[#00ff88]'
+                          }
+                        >
+                          ，获得
+                          <span
+                            className={`mx-0.5 font-bold ${
+                              wireframeMode ? 'font-hud-mono text-[#00d4ff]' : 'font-tech-num'
+                            }`}
+                          >
+                            {ev.points}
+                          </span>
+                          分
                         </span>
                       )}
                     </p>
